@@ -88,6 +88,8 @@ void TestCCScalarField::rangeStartAndStopStayInboundAndOrdered() const
 	ccScalarField::Range range;
 	range.setBounds(0, 10);
 
+	range.setStop(5);
+
 	// a start value above the maximum pushes the stop value
 	range.setStart(20);
 	QCOMPARE(range.start(), 10.0f);

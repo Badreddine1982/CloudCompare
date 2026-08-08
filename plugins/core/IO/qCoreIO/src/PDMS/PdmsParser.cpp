@@ -679,11 +679,18 @@ bool PdmsParser::parseSessionContent()
 			return false;
 		}
 	}
+	if (!currentItem && !root)
+	{
+		// no item could be loaded
+		session->printWarning("No valid item in this file");
+		session->closeSession(true);
+		return false;
+	}
 	// If the hierarchy root has not yet been computed, do it now.
 	if (!root)
 		root = currentItem->getRoot();
 	// else check that the current item doesn't belong to a new root
-	else if (currentItem->getRoot() != root)
+	else if (currentItem && currentItem->getRoot() != root)
 		session->printWarning("there could be several hierarchy root specified in this file");
 	if (root)
 		if (!root->convertCoordinateSystem())

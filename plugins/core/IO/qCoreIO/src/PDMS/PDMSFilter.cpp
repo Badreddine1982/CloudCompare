@@ -57,7 +57,10 @@ CC_FILE_ERROR PDMSFilter::loadFile(const QString& filename, ccHObject& container
 	if (parser.parseSessionContent())
 	{
 		PdmsTools::PdmsObjects::GenericItem* pdmsmodel = parser.getLoadedObject(true);
-		assert(pdmsmodel);
+		if (!pdmsmodel)
+		{
+			return CC_FERR_MALFORMED_FILE;
+		}
 
 		std::vector<PdmsAndCCPair> treeSync;
 		treeSync.emplace_back(pdmsmodel, &container);

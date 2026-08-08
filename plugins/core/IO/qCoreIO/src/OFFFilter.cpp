@@ -263,8 +263,9 @@ CC_FILE_ERROR OFFFilter::loadFile(const QString& filename, ccHObject& container,
 				for (unsigned j = 0; j < polyVertCount; ++j)
 				{
 					indexes[j] = tokens[j + 1].toUInt(&ok);
-					if (!ok)
+					if (!ok || indexes[j] >= vertices->size())
 					{
+						ccLog::Warning("[OFF] Invalid vertex index!");
 						delete mesh;
 						return CC_FERR_MALFORMED_FILE;
 					}

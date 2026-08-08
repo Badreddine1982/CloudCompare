@@ -81,7 +81,7 @@ CC_FILE_ERROR IcmFilter::loadFile(const QString& filename, ccHObject& container,
 	// on extrait le chemin relatif
 	QString path = QFileInfo(filename).absolutePath();
 
-	char cloudFileName[MAX_ASCII_FILE_LINE_LENGTH];
+	char cloudFileName[MAX_ASCII_FILE_LINE_LENGTH]{};
 	if (!fgets(line, MAX_ASCII_FILE_LINE_LENGTH, fp))
 	{
 		fclose(fp);
@@ -92,9 +92,13 @@ CC_FILE_ERROR IcmFilter::loadFile(const QString& filename, ccHObject& container,
 		fclose(fp);
 		return CC_FERR_WRONG_FILE_TYPE;
 	}
-	sscanf(line, "FILE_NAME=%s", cloudFileName);
+	if (sscanf(line, "FILE_NAME=%4095s", cloudFileName) != 1)
+	{
+		fclose(fp);
+		return CC_FERR_MALFORMED_FILE;
+	}
 
-	char subFileType[12];
+	char subFileType[12]{};
 	if (!fgets(line, MAX_ASCII_FILE_LINE_LENGTH, fp))
 	{
 		fclose(fp);
@@ -105,7 +109,11 @@ CC_FILE_ERROR IcmFilter::loadFile(const QString& filename, ccHObject& container,
 		fclose(fp);
 		return CC_FERR_WRONG_FILE_TYPE;
 	}
-	sscanf(line, "FILE_TYPE=%s", subFileType);
+	if (sscanf(line, "FILE_TYPE=%11s", subFileType) != 1)
+	{
+		fclose(fp);
+		return CC_FERR_MALFORMED_FILE;
+	}
 
 	FileIOFilter::Shared filter = FileIOFilter::FindBestFilterForExtension(subFileType);
 	if (!filter)
@@ -140,8 +148,12 @@ CC_FILE_ERROR IcmFilter::loadFile(const QString& filename, ccHObject& container,
 			fclose(fp);
 			return CC_FERR_WRONG_FILE_TYPE;
 		}
-		char imagesDescriptorFileName[MAX_ASCII_FILE_LINE_LENGTH];
-		sscanf(line, "IMAGES_DESCRIPTOR=%s", imagesDescriptorFileName);
+		char imagesDescriptorFileName[MAX_ASCII_FILE_LINE_LENGTH]{};
+		if (sscanf(line, "IMAGES_DESCRIPTOR=%4095s", imagesDescriptorFileName) != 1)
+		{
+			fclose(fp);
+			return CC_FERR_MALFORMED_FILE;
+		}
 
 		int n = LoadCalibratedImages(entities, path, imagesDescriptorFileName, entities->getBB_recursive());
 		ccLog::Print("[ICM] %i image(s) loaded ...", n);
@@ -186,8 +198,13 @@ int IcmFilter::LoadCalibratedImages(ccHObject* entities, const QString& path, co
 	{
 		if (line[0] == 'D' && line[1] == 'E' && line[2] == 'F')
 		{
-			char imageFileName[256];
-			sscanf(line, "DEF %s Viewpoint {", imageFileName);
+			char imageFileName[256]{};
+			if (sscanf(line, "DEF %255s Viewpoint {", imageFileName) != 1)
+			{
+				ccLog::Warning("[IcmFilter] Malformed image declaration! Process stopped...");
+				fclose(fp);
+				return loadedImages;
+			}
 
 			// add absolute path
 			ccImage* CI = new ccImage();
@@ -236,7 +253,7 @@ int IcmFilter::LoadCalibratedImages(ccHObject* entities, const QString& path, co
 			ccLog::Print("\t Camera pos=(%f,%f,%f)", t[0], t[1], t[2]);
 
 			// Description
-			char desc[MAX_ASCII_FILE_LINE_LENGTH];
+			char desc[MAX_ASCII_FILE_LINE_LENGTH]{};
 			if (!fgets(line, MAX_ASCII_FILE_LINE_LENGTH, fp))
 			{
 				ccLog::Error("[IcmFilter] Read error (description)!");
@@ -244,7 +261,7 @@ int IcmFilter::LoadCalibratedImages(ccHObject* entities, const QString& path, co
 				fclose(fp);
 				return loadedImages;
 			}
-			sscanf(line, "\t description \"%s\"\n", desc);
+			sscanf(line, "\t description \"%4095s\"\n", desc);
 
 			// CI->setDescription(desc);
 			ccLog::Print("\t Description: '%s'", desc);

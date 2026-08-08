@@ -380,8 +380,16 @@ static QString CreateTempFile(QuaZip& zip, QString zipFilename)
 		return QString();
 	}
 
+	// never use the archive entry path as is: it may point outside of the temporary directory
+	QString baseFilename = QFileInfo(zipFilename).fileName();
+	if (baseFilename.isEmpty())
+	{
+		ccLog::Warning(QString("[Photoscan] Invalid entry name '%1' in the Photoscan archive").arg(zipFilename));
+		return QString();
+	}
+
 	QDir    tempDir      = QDir::temp();
-	QString tempFilename = tempDir.absoluteFilePath(zipFilename);
+	QString tempFilename = tempDir.absoluteFilePath(baseFilename);
 	QFile   tempFile(tempFilename);
 	if (!tempFile.open(QFile::WriteOnly))
 	{

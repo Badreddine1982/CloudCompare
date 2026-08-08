@@ -1061,7 +1061,7 @@ CC_FILE_ERROR ObjFilter::loadFile(const QString& filename, ccHObject& container,
 					}
 					catch (const std::bad_alloc&)
 					{
-						// not enough memory to tesselate!
+						ccLog::Warning("[OBJ] Not enough memory to tesselate face (falling back to the naive triangulation)");
 						shouldTesselate = false;
 					}
 				}

@@ -35,6 +35,7 @@
 
 // System
 #include <assert.h>
+#include <exception>
 #include <vector>
 
 static const char FBX_SCALE_METADATA_KEY[] = "FBX:ScaleToCM";
@@ -621,8 +622,15 @@ CC_FILE_ERROR FBXFilter::saveToFile(ccHObject* entity, const QString& filename, 
 						// get the right format
 						fileFormat = buttons[msgBox.clickedButton()];
 					}
+					catch (const std::exception& e)
+					{
+						ccLog::Warning(QString("[FBX] Failed to display the output format selection dialog (%1). The default format will be used").arg(e.what()));
+						fileFormat = -1;
+					}
 					catch (...)
 					{
+						ccLog::Warning("[FBX] Failed to display the output format selection dialog. The default format will be used");
+						fileFormat = -1;
 					}
 				}
 				else

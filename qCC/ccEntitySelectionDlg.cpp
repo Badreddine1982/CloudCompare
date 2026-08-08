@@ -24,6 +24,9 @@
 #include <QDialog>
 #include <QListWidgetItem>
 
+// qCC_db
+#include <ccLog.h>
+
 ccEntitySelectionDialog::ccEntitySelectionDialog(const ccHObject::Container& entities,
                                                  bool                        multiSelectionEnabled,
                                                  int                         defaultSelectedIndex /*=0*/,
@@ -104,7 +107,8 @@ void ccEntitySelectionDialog::getSelectedIndexes(std::vector<int>& indexes) cons
 	}
 	catch (const std::bad_alloc&)
 	{
-		// not enough memory?!
+		ccLog::Error("Not enough memory to return the selected entities");
+		indexes.clear();
 		return;
 	}
 

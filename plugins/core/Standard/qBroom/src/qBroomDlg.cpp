@@ -1827,7 +1827,9 @@ uint32_t qBroomDlg::addUndoStep(const ccGLMatrix& broomPos)
 	}
 	catch (const std::bad_alloc&)
 	{
-		//not enough memory (undo will be broken)
+		ccLog::Warning("[qBroom] Not enough memory to add a new undo step (undo is now disabled)");
+		undoPushButton->setEnabled(false);
+		undo10PushButton->setEnabled(false);
 	}
 
 	return static_cast<uint32_t>(m_undoPositions.size());

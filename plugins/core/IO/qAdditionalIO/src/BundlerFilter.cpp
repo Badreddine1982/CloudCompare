@@ -336,7 +336,7 @@ CC_FILE_ERROR BundlerFilter::loadFileExtended(const QString&  filename,
 				}
 				catch (const std::bad_alloc&)
 				{
-					// nothing serious here
+					ccLog::Warning("[Bundler] Not enough memory to track the camera usage (unused cameras won't be reported)");
 				}
 			}
 

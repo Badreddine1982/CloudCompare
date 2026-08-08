@@ -270,17 +270,18 @@ bool ccApplicationBase::setAppStyle(QString styleKey)
 		QFile f(resourcePath);
 		if (!f.exists())
 		{
-			f.close();
+			ccLog::Warning(QString("Style sheet not found: %1").arg(resourcePath));
 			return false;
 		}
-		else
+		if (!f.open(QFile::ReadOnly | QFile::Text))
 		{
-			f.open(QFile::ReadOnly | QFile::Text);
-			QTextStream ts(&f);
-			setStyleSheet(ts.readAll());
-			f.close();
-			return true;
+			ccLog::Warning(QString("Failed to open the style sheet '%1' (%2)").arg(resourcePath, f.errorString()));
+			return false;
 		}
+		QTextStream ts(&f);
+		setStyleSheet(ts.readAll());
+		f.close();
+		return true;
 	};
 
 	if (styleKey == "QDarkStyleSheet::Dark")

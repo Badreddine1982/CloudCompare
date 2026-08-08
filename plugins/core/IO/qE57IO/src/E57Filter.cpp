@@ -830,8 +830,11 @@ void SaveImage(const ccImage*    image,
 	QByteArray ba;
 	{
 		QBuffer buffer(&ba);
-		buffer.open(QIODevice::WriteOnly);
-		image->data().save(&buffer, "JPG"); // writes image into ba in JPG format
+		if (!buffer.open(QIODevice::WriteOnly) || !image->data().save(&buffer, "JPG")) // writes image into ba in JPG format
+		{
+			ccLog::Warning(QString("[E57] Failed to encode the image '%1' (it won't be saved)").arg(image->getName()));
+			return;
+		}
 	}
 	int imageSize = ba.size();
 

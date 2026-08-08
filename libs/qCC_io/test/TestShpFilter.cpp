@@ -9,6 +9,12 @@
 #include "cctype"
 
 #include <array>
+#include <cmath>
+
+//! Tolerance used when comparing global (double) coordinates restored from single precision local ones
+static constexpr double GLOBAL_COORD_EPSILON = 1.0e-3;
+
+#define QCOMPARE_GLOBAL_COORD(actual, expected) QVERIFY(std::abs((actual) - (expected)) <= GLOBAL_COORD_EPSILON)
 
 static void SetDefaultLoadParameters(FileIOFilter::LoadParameters& params, CCVector3d& shift, bool& shiftEnabled)
 {
@@ -42,8 +48,8 @@ void TestShpFilter::readPolylineFile(const QString& filePath) const
 	QVERIFY(!vertices->isScalarFieldEnabled());
 	QVERIFY(vertices->size() == 5);
 
-	ScalarType expectedXs[5] = {1.0, 5.0, 5.0, 3.0, 1.0};
-	ScalarType expectedYs[5] = {5.0, 5.0, 1.0, 3.0, 1.0};
+	PointCoordinateType expectedXs[5] = {1.0, 5.0, 5.0, 3.0, 1.0};
+	PointCoordinateType expectedYs[5] = {5.0, 5.0, 1.0, 3.0, 1.0};
 	for (unsigned i = 0; i < 5; ++i)
 	{
 		const CCVector3* point = vertices->getPoint(i);
@@ -59,8 +65,8 @@ void TestShpFilter::readPolylineFile(const QString& filePath) const
 	QVERIFY(!vertices->isScalarFieldEnabled());
 	QVERIFY(vertices->size() == 2);
 
-	ScalarType expectedXs2[2] = {3.0, 2.0};
-	ScalarType expectedYs2[2] = {2.0, 6.0};
+	PointCoordinateType expectedXs2[2] = {3.0, 2.0};
+	PointCoordinateType expectedYs2[2] = {2.0, 6.0};
 	for (unsigned i = 0; i < 2; ++i)
 	{
 		const CCVector3* point = vertices->getPoint(i);
@@ -230,27 +236,27 @@ void TestShpFilter::readMultiPointZFile(const QString& filePath) const
 
 	point = pointCloud->getPoint(0);
 	pg    = pointCloud->toGlobal3d(*point);
-	QCOMPARE(pg.x, 1422671.7232666016);
-	QCOMPARE(pg.y, 4188903.4295959473);
-	QCOMPARE(pg.z, 72.00995635986328);
+	QCOMPARE_GLOBAL_COORD(pg.x, 1422671.7232666016);
+	QCOMPARE_GLOBAL_COORD(pg.y, 4188903.4295959473);
+	QCOMPARE_GLOBAL_COORD(pg.z, 72.00995635986328);
 
 	point = pointCloud->getPoint(1);
 	pg    = pointCloud->toGlobal3d(*point);
-	QCOMPARE(pg.x, 1422672.1022949219);
-	QCOMPARE(pg.y, 4188903.4295959473);
-	QCOMPARE(pg.z, 72.0060806274414);
+	QCOMPARE_GLOBAL_COORD(pg.x, 1422672.1022949219);
+	QCOMPARE_GLOBAL_COORD(pg.y, 4188903.4295959473);
+	QCOMPARE_GLOBAL_COORD(pg.z, 72.0060806274414);
 
 	point = pointCloud->getPoint(2);
 	pg    = pointCloud->toGlobal3d(*point);
-	QCOMPARE(pg.x, 1422671.9127807617);
-	QCOMPARE(pg.y, 4188903.7578430176);
-	QCOMPARE(pg.z, 72.00220489501953);
+	QCOMPARE_GLOBAL_COORD(pg.x, 1422671.9127807617);
+	QCOMPARE_GLOBAL_COORD(pg.y, 4188903.7578430176);
+	QCOMPARE_GLOBAL_COORD(pg.z, 72.00220489501953);
 
 	point = pointCloud->getPoint(3);
 	pg    = pointCloud->toGlobal3d(*point);
-	QCOMPARE(pg.x, 1422671.9127807617);
-	QCOMPARE(pg.y, 4188903.539001465);
-	QCOMPARE(pg.z, 71.99445343017578);
+	QCOMPARE_GLOBAL_COORD(pg.x, 1422671.9127807617);
+	QCOMPARE_GLOBAL_COORD(pg.y, 4188903.539001465);
+	QCOMPARE_GLOBAL_COORD(pg.z, 71.99445343017578);
 }
 
 void TestShpFilter::readMultipatchFile(const QString& filePath) const
@@ -335,8 +341,8 @@ void TestShpFilter::readPolygonFile(const QString& filePath) const
 	for (unsigned i = 0; i < expectedNumPoints; ++i)
 	{
 		const CCVector3* p = vertices->getPoint(i);
-		QCOMPARE(p->x, static_cast<ScalarType>(expectedXs[i] + shift.x));
-		QCOMPARE(p->y, static_cast<ScalarType>(expectedYs[i] + shift.y));
+		QCOMPARE(p->x, static_cast<PointCoordinateType>(expectedXs[i] + shift.x));
+		QCOMPARE(p->y, static_cast<PointCoordinateType>(expectedYs[i] + shift.y));
 		QCOMPARE(p->z, 0.0);
 	}
 }
@@ -566,9 +572,9 @@ void TestShpFilter::readSinglePointZFile(const QString& filePath) const
 	for (unsigned i = 0; i < expectedNumPoints; ++i)
 	{
 		const CCVector3* p = cloud->getPoint(i);
-		QCOMPARE(p->x, static_cast<ScalarType>(expectedXs[i] + shift.x));
-		QCOMPARE(p->y, static_cast<ScalarType>(expectedYs[i] + shift.y));
-		QCOMPARE(p->z, static_cast<ScalarType>(expectedZs[i] + shift.z));
+		QCOMPARE(p->x, static_cast<PointCoordinateType>(expectedXs[i] + shift.x));
+		QCOMPARE(p->y, static_cast<PointCoordinateType>(expectedYs[i] + shift.y));
+		QCOMPARE(p->z, static_cast<PointCoordinateType>(expectedZs[i] + shift.z));
 	}
 }
 

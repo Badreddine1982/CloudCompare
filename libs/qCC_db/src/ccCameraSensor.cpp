@@ -1791,90 +1791,29 @@ bool ccCameraSensor::computeOrthoRectificationParams(const ccImage*             
 	return true;
 }
 
-ccImage* ccCameraSensor::orthoRectifyAsImageDirect(const ccImage*      image,
-                                                   PointCoordinateType Z0,
-                                                   double&             pixelSize,
-                                                   bool                undistortImages /*=true*/,
-                                                   double*             minCorner /*=nullptr*/,
-                                                   double*             maxCorner /*=nullptr*/,
-                                                   double*             realCorners /*=nullptr*/) const
+//! Determines the extents and the size of an ortho-rectified image
+/** \param corners the (x, y) coordinates of the 4 corners of the ortho-rectified image
+    \param width source image width
+    \param height source image height
+    \param pixelSize input pixel size (automatically determined if <= 0)
+    \param minC output min corner
+    \param maxC output max corner
+    \param w output image width
+    \param h output image height
+    \return the effective pixel size
+**/
+static double ComputeOrthoRectifiedImageExtents(const double corners[8],
+                                                int          width,
+                                                int          height,
+                                                double       pixelSize,
+                                                double       minC[2],
+                                                double       maxC[2],
+                                                unsigned&    w,
+                                                unsigned&    h)
 {
-	// first, we compute the ortho-rectified image corners
-	double corners[8];
-
-	int width  = static_cast<int>(image->getW());
-	int height = static_cast<int>(image->getH());
-
-	// top-left
-	{
-		CCVector2 xTopLeft(0, 0);
-		CCVector3 P3D;
-		if (!fromImageCoordToGlobalCoord(xTopLeft, P3D, Z0))
-			return nullptr;
-#ifdef QT_DEBUG
-		// internal check
-		CCVector2 check(0, 0);
-		fromGlobalCoordToImageCoord(P3D, check, false);
-		assert((xTopLeft - check).norm2() < std::max(width, height) * FLT_EPSILON);
-#endif
-		corners[0] = P3D.x;
-		corners[1] = P3D.y;
-	}
-
-	// top-right
-	{
-		CCVector2 xTopRight(static_cast<PointCoordinateType>(width), 0);
-		CCVector3 P3D;
-		if (!fromImageCoordToGlobalCoord(xTopRight, P3D, Z0))
-			return nullptr;
-#ifdef QT_DEBUG
-		// internal check
-		CCVector2 check(0, 0);
-		fromGlobalCoordToImageCoord(P3D, check, false);
-		assert((xTopRight - check).norm2() < std::max(width, height) * FLT_EPSILON);
-#endif
-		corners[2] = P3D.x;
-		corners[3] = P3D.y;
-	}
-
-	// bottom-right
-	{
-		CCVector2 xBottomRight(static_cast<PointCoordinateType>(width), static_cast<PointCoordinateType>(height));
-		CCVector3 P3D;
-		if (!fromImageCoordToGlobalCoord(xBottomRight, P3D, Z0))
-			return nullptr;
-#ifdef QT_DEBUG
-		// internal check
-		CCVector2 check(0, 0);
-		fromGlobalCoordToImageCoord(P3D, check, false);
-		assert((xBottomRight - check).norm2() < std::max(width, height) * FLT_EPSILON);
-#endif
-		corners[4] = P3D.x;
-		corners[5] = P3D.y;
-	}
-
-	// bottom-left
-	{
-		CCVector2 xBottomLeft(0, static_cast<PointCoordinateType>(height));
-		CCVector3 P3D;
-		if (!fromImageCoordToGlobalCoord(xBottomLeft, P3D, Z0))
-			return nullptr;
-#ifdef QT_DEBUG
-		// internal check
-		CCVector2 check(0, 0);
-		fromGlobalCoordToImageCoord(P3D, check, false);
-		assert((xBottomLeft - check).norm2() < std::max(width, height) * FLT_EPSILON);
-#endif
-		corners[6] = P3D.x;
-		corners[7] = P3D.y;
-	}
-
-	if (realCorners)
-		memcpy(realCorners, corners, 8 * sizeof(double));
-
 	// we look for min and max bounding box
-	double minC[2] = {corners[0], corners[1]};
-	double maxC[2] = {corners[0], corners[1]};
+	minC[0] = maxC[0] = corners[0];
+	minC[1] = maxC[1] = corners[1];
 
 	for (unsigned k = 1; k < 4; ++k)
 	{
@@ -1890,6 +1829,67 @@ ccImage* ccCameraSensor::orthoRectifyAsImageDirect(const ccImage*      image,
 			maxC[1] = C[1];
 	}
 
+	double dx = maxC[0] - minC[0];
+	double dy = maxC[1] - minC[1];
+
+	double effectivePixelSize = pixelSize;
+	if (effectivePixelSize <= 0)
+	{
+		int maxSize        = std::max(width, height);
+		effectivePixelSize = std::max(dx, dy) / maxSize;
+	}
+
+	w = static_cast<unsigned>(dx / effectivePixelSize);
+	h = static_cast<unsigned>(dy / effectivePixelSize);
+
+	return effectivePixelSize;
+}
+
+ccImage* ccCameraSensor::orthoRectifyAsImageDirect(const ccImage*      image,
+                                                   PointCoordinateType Z0,
+                                                   double&             pixelSize,
+                                                   bool                undistortImages /*=true*/,
+                                                   double*             minCorner /*=nullptr*/,
+                                                   double*             maxCorner /*=nullptr*/,
+                                                   double*             realCorners /*=nullptr*/) const
+{
+	// first, we compute the ortho-rectified image corners
+	double corners[8];
+
+	int width  = static_cast<int>(image->getW());
+	int height = static_cast<int>(image->getH());
+
+	// top-left, top-right, bottom-right and bottom-left corners
+	const CCVector2 imageCorners[4]{
+	    {0, 0},
+	    {static_cast<PointCoordinateType>(width), 0},
+	    {static_cast<PointCoordinateType>(width), static_cast<PointCoordinateType>(height)},
+	    {0, static_cast<PointCoordinateType>(height)}};
+
+	for (int k = 0; k < 4; ++k)
+	{
+		CCVector3 P3D;
+		if (!fromImageCoordToGlobalCoord(imageCorners[k], P3D, Z0))
+			return nullptr;
+#ifdef QT_DEBUG
+		// internal check
+		CCVector2 check(0, 0);
+		fromGlobalCoordToImageCoord(P3D, check, false);
+		assert((imageCorners[k] - check).norm2() < std::max(width, height) * FLT_EPSILON);
+#endif
+		corners[2 * k]     = P3D.x;
+		corners[2 * k + 1] = P3D.y;
+	}
+
+	if (realCorners)
+		memcpy(realCorners, corners, 8 * sizeof(double));
+
+	double   minC[2]{0.0, 0.0};
+	double   maxC[2]{0.0, 0.0};
+	unsigned w          = 0;
+	unsigned h          = 0;
+	double   _pixelSize = ComputeOrthoRectifiedImageExtents(corners, width, height, pixelSize, minC, maxC, w, h);
+
 	// output 3D boundaries (optional)
 	if (minCorner)
 	{
@@ -1901,18 +1901,6 @@ ccImage* ccCameraSensor::orthoRectifyAsImageDirect(const ccImage*      image,
 		maxCorner[0] = maxC[0];
 		maxCorner[1] = maxC[1];
 	}
-
-	double dx = maxC[0] - minC[0];
-	double dy = maxC[1] - minC[1];
-
-	double _pixelSize = pixelSize;
-	if (_pixelSize <= 0)
-	{
-		int maxSize = std::max(width, height);
-		_pixelSize  = std::max(dx, dy) / maxSize;
-	}
-	unsigned w = static_cast<unsigned>(dx / _pixelSize);
-	unsigned h = static_cast<unsigned>(dy / _pixelSize);
 
 	QImage orthoImage(w, h, QImage::Format_ARGB32);
 	if (orthoImage.isNull()) // not enough memory!
@@ -2024,23 +2012,11 @@ ccImage* ccCameraSensor::orthoRectifyAsImage(const ccImage*                  ima
 		memcpy(realCorners, corners, 8 * sizeof(double));
 	}
 
-	// we look for min and max bounding box
-	double minC[2] = {corners[0], corners[1]};
-	double maxC[2] = {corners[0], corners[1]};
-
-	for (unsigned k = 1; k < 4; ++k)
-	{
-		const double* C = corners + 2 * k;
-		if (minC[0] > C[0])
-			minC[0] = C[0];
-		else if (maxC[0] < C[0])
-			maxC[0] = C[0];
-
-		if (minC[1] > C[1])
-			minC[1] = C[1];
-		else if (maxC[1] < C[1])
-			maxC[1] = C[1];
-	}
+	double   minC[2]{0.0, 0.0};
+	double   maxC[2]{0.0, 0.0};
+	unsigned w          = 0;
+	unsigned h          = 0;
+	double   _pixelSize = ComputeOrthoRectifiedImageExtents(corners, width, height, pixelSize, minC, maxC, w, h);
 
 	// output 3D boundaries (optional)
 	if (minCorner)
@@ -2053,18 +2029,6 @@ ccImage* ccCameraSensor::orthoRectifyAsImage(const ccImage*                  ima
 		maxCorner[0] = maxC[0];
 		maxCorner[1] = maxC[1];
 	}
-
-	double dx = maxC[0] - minC[0];
-	double dy = maxC[1] - minC[1];
-
-	double _pixelSize = pixelSize;
-	if (_pixelSize <= 0)
-	{
-		int maxSize = std::max(width, height);
-		_pixelSize  = std::max(dx, dy) / maxSize;
-	}
-	unsigned w = static_cast<unsigned>(dx / _pixelSize);
-	unsigned h = static_cast<unsigned>(dy / _pixelSize);
 
 	QImage orthoImage(w, h, QImage::Format_ARGB32);
 	if (orthoImage.isNull()) // not enough memory!

@@ -370,7 +370,7 @@ bool PdmsFileSession::moveForward()
 			m_eof       = true;
 			break;
 		default:
-			if (n >= c_max_buff_size)
+			if (n + 1 >= c_max_buff_size)
 			{
 				printWarning("Buffer overflow");
 				return false;
@@ -407,7 +407,7 @@ void PdmsFileSession::skipComment()
 			} while (car != EOF && car != '\n');
 			if (car == '\n')
 				m_currentLine++;
-			tokenBuffer[n - 1] = '\0';
+			tokenBuffer[n > 0 ? n - 1 : 0] = '\0';
 		}
 		m_eol = false;
 		break;
@@ -440,8 +440,8 @@ void PdmsFileSession::skipComment()
 					n++;
 			}
 		} while (car != EOF && commentBlockLevel > 0);
-		tokenBuffer[n - 1] = '\0';
-		m_eol              = false;
+		tokenBuffer[n > 0 ? n - 1 : 0] = '\0';
+		m_eol                          = false;
 	}
 	break;
 	default:
@@ -500,6 +500,11 @@ void PdmsFileSession::skipHandleCommand()
 	while (!(opened > 0 && state == 0))
 	{
 		int car = readChar();
+		if (car == EOF)
+		{
+			printWarning("Unterminated HANDLE command");
+			break;
+		}
 		if (car == '(')
 		{
 			opened++;
@@ -674,11 +679,18 @@ bool PdmsParser::parseSessionContent()
 			return false;
 		}
 	}
+	if (!currentItem && !root)
+	{
+		// no item could be loaded
+		session->printWarning("No valid item in this file");
+		session->closeSession(true);
+		return false;
+	}
 	// If the hierarchy root has not yet been computed, do it now.
 	if (!root)
 		root = currentItem->getRoot();
 	// else check that the current item doesn't belong to a new root
-	else if (currentItem->getRoot() != root)
+	else if (currentItem && currentItem->getRoot() != root)
 		session->printWarning("there could be several hierarchy root specified in this file");
 	if (root)
 		if (!root->convertCoordinateSystem())

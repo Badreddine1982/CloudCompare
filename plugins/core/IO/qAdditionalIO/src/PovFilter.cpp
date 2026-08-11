@@ -224,8 +224,8 @@ CC_FILE_ERROR PovFilter::loadFile(const QString& filename, ccHObject& container,
 		return CC_FERR_READING;
 	}
 
-	char sensorType[256];
-	if (fscanf(fp, "SENSOR_TYPE = %s\n", sensorType) < 0)
+	char sensorType[256]{};
+	if (fscanf(fp, "SENSOR_TYPE = %255s\n", sensorType) != 1)
 	{
 		fclose(fp);
 		return CC_FERR_READING;
@@ -250,9 +250,9 @@ CC_FILE_ERROR PovFilter::loadFile(const QString& filename, ccHObject& container,
 	}
 
 	float base = 0.0f;
-	char  unitsType[3]; // units: ignored in this version
-	if (fscanf(fp, "SENSOR_BASE = %f\n", &base) < 0
-	    || fscanf(fp, "UNITS = %s\n", unitsType) < 0
+	char  unitsType[16]{}; // units: ignored in this version
+	if (fscanf(fp, "SENSOR_BASE = %f\n", &base) != 1
+	    || fscanf(fp, "UNITS = %15s\n", unitsType) != 1
 	    || !fgets(line, MAX_ASCII_FILE_LINE_LENGTH, fp)
 	    || strcmp(line, "#END_HEADER\n") != 0)
 	{
@@ -265,21 +265,21 @@ CC_FILE_ERROR PovFilter::loadFile(const QString& filename, ccHObject& container,
 	// on extrait le chemin relatif
 	QString path = QFileInfo(filename).absolutePath();
 
-	char subFileName[256];
-	char subFileType[12];
+	char subFileName[256]{};
+	char subFileType[12]{};
 
 	while (fgets(line, MAX_ASCII_FILE_LINE_LENGTH, fp))
 	{
 		if ((line[0] == '#') && (line[1] == 'P'))
 		{
 			ccLog::Print(QString(line).trimmed());
-			if (fscanf(fp, "F %s\n", subFileName) < 0)
+			if (fscanf(fp, "F %255s\n", subFileName) != 1)
 			{
 				ccLog::PrintDebug("[PovFilter::loadFile] Read error (F) !");
 				fclose(fp);
 				return CC_FERR_READING;
 			}
-			if (fscanf(fp, "T %s\n", subFileType) < 0)
+			if (fscanf(fp, "T %11s\n", subFileType) != 1)
 			{
 				ccLog::PrintDebug("[PovFilter::loadFile] Read error (T) !");
 				fclose(fp);
@@ -311,14 +311,22 @@ CC_FILE_ERROR PovFilter::loadFile(const QString& filename, ccHObject& container,
 						break;
 					else if (line[0] == 'C')
 					{
-						float C[3];
-						sscanf(line, "C %f %f %f\n", C, C + 1, C + 2);
+						float C[3]{0.0f, 0.0f, 0.0f};
+						if (sscanf(line, "C %f %f %f\n", C, C + 1, C + 2) != 3)
+						{
+							ccLog::Warning("[PovFilter::loadFile] Malformed sensor center! Ignored");
+							continue;
+						}
 						sensorCenter = CCVector3::fromArray(C);
 					}
 					else if (line[0] == 'X' || line[0] == 'Y' || line[0] == 'Z')
 					{
-						float V[3];
-						sscanf(line + 2, "%f %f %f\n", V, V + 1, V + 2);
+						float V[3]{0.0f, 0.0f, 0.0f};
+						if (sscanf(line + 2, "%f %f %f\n", V, V + 1, V + 2) != 3)
+						{
+							ccLog::Warning("[PovFilter::loadFile] Malformed rotation matrix row! Ignored");
+							continue;
+						}
 
 						assert(line[0] >= 88);
 						unsigned char col = static_cast<unsigned char>(line[0] - 88);

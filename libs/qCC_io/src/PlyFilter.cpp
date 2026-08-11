@@ -1827,7 +1827,7 @@ CC_FILE_ERROR PlyFilter::loadFile(const QString& filename, const QString& inputT
 		}
 	}
 
-	if (texCoords && (s_invalidTexCoordinates || (!s_hasQuads && s_texCoordCount != 3 * mesh->size())))
+	if (texCoords && (s_invalidTexCoordinates || !mesh || (!s_hasQuads && s_texCoordCount != 3 * mesh->size())))
 	{
 		ccLog::Error("Invalid texture coordinates! (they will be ignored)");
 		texCoords->release();
@@ -1892,9 +1892,11 @@ CC_FILE_ERROR PlyFilter::loadFile(const QString& filename, const QString& inputT
 		}
 		mesh->shrinkToFit();
 
-		// check that vertex indices start at 0
-		unsigned minVertIndex = numberOfPoints;
-		unsigned maxVertIndex = 0;
+		// check that vertex indices start at 0 and are all in the valid range
+		// (we use the actual number of loaded vertices, not the announced one)
+		const unsigned loadedPointCount = cloud->size();
+		unsigned       minVertIndex     = loadedPointCount;
+		unsigned       maxVertIndex     = 0;
 		for (unsigned i = 0; i < s_triCount; ++i)
 		{
 			const CCCoreLib::VerticesIndexes* tri = mesh->getTriangleVertIndexes(i);
@@ -1912,9 +1914,9 @@ CC_FILE_ERROR PlyFilter::loadFile(const QString& filename, const QString& inputT
 				maxVertIndex = tri->i3;
 		}
 
-		if (maxVertIndex >= numberOfPoints)
+		if (maxVertIndex >= loadedPointCount)
 		{
-			if (maxVertIndex == numberOfPoints && minVertIndex > 0)
+			if (maxVertIndex == loadedPointCount && minVertIndex > 0)
 			{
 				ccLog::Warning("[PLY] Vertex indexes seem to be shifted (+1)! We will try to 'unshift' the indexes (otherwise the file might be corrupted...)");
 				for (unsigned i = 0; i < s_triCount; ++i)

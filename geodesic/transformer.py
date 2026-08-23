@@ -112,11 +112,18 @@ class GeodesicMultiHeadAttention(TorchModule):
         k = self._split_heads(self.k_proj(x))
         v = self._split_heads(self.v_proj(x))
         content_scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)
-        distances = torch.cdist(q.flatten(0, 1), k.flatten(0, 1), p=2).view(x.shape[0], self.config.num_heads, x.shape[1], x.shape[1])
+        # Keep tensor attention aligned with the frozen Kernel metric contract.
+        # ``q`` and ``k`` are shaped (batch, heads, tokens, head_dim), so flattening
+        # batch and heads lets the shared helper preserve the per-head distance field.
+        distances = pairwise_geodesic_distances(
+            q.flatten(0, 1), k.flatten(0, 1), self.config.geodesic_metric
+        ).view(x.shape[0], self.config.num_heads, x.shape[1], x.shape[1])
         if geodesic_coordinates is not None:
             if not torch.isfinite(geodesic_coordinates).all():
                 raise ValueError("GeodesicMultiHeadAttention rejects NaN/Inf coordinates")
-            coordinate_distances = torch.cdist(geodesic_coordinates, geodesic_coordinates, p=2).unsqueeze(1)
+            coordinate_distances = pairwise_geodesic_distances(
+                geodesic_coordinates, geodesic_coordinates, self.config.geodesic_metric
+            ).unsqueeze(1)
             distances = 0.5 * (distances + coordinate_distances)
         scores = content_scores - self.config.lambda_geodesic * distances
         translator_outputs: list[TranslatorOutput] = []

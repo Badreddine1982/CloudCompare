@@ -85,6 +85,6 @@ Results are saved to `experiments/results/chess_projection_v01.json`.
 
 ## Limitations
 
-- The legal move validator is deterministic and pseudo-legal; it does not yet evaluate check, castling, en passant, promotion, repetition, or draw rules.
+- The deterministic validator evaluates check, pins, castling, en passant, and promotion, but draw-by-repetition and the fifty-move rule remain out of scope.
 - The scoring function is intentionally transparent and hand-authored; it is not an opaque neural quality model.
 - The objective is state consistency and hypothesis control, not proving chess improves general intelligence.

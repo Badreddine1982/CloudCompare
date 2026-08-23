@@ -22,7 +22,15 @@ def test_attention_and_transformer_dispatch_metrics_when_torch_available():
     assert torch.isclose(euclidean.squeeze(), torch.tensor(5.0))
     assert torch.isclose(manhattan.squeeze(), torch.tensor(7.0))
 
+    # Zero the learned projections so the combined field is exactly half of the
+    # coordinate metric (the other half is the zero-valued projected-token field).
+    coordinates = torch.tensor([[[0.0, 0.0], [3.0, 4.0], [1.0, 1.0]]])
     model = GeodesicMultiHeadAttention(GeodesicTransformerConfig(d_model=8, num_heads=2, geodesic_metric="manhattan"))
-    output = model(torch.randn(1, 3, 8), torch.tensor([[[0.0, 0.0], [3.0, 4.0], [1.0, 1.0]]]))
+    for projection in (model.q_proj, model.k_proj):
+        projection.weight.data.zero_()
+        projection.bias.data.zero_()
+    output = model(torch.randn(1, 3, 8), coordinates)
     assert output.geodesic_distances.shape == (1, 2, 3, 3)
     assert torch.isfinite(output.geodesic_distances).all()
+    # Manhattan distance (0, 0) → (3, 4) is 7, not Euclidean distance 5.
+    assert torch.allclose(output.geodesic_distances[0, :, 0, 1], torch.full((2,), 3.5))

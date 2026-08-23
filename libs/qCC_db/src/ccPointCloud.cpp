@@ -5849,6 +5849,137 @@ void ccPointCloud::removeFromDisplay(const ccGenericGLDisplay* win)
 	ccGenericPointCloud::removeFromDisplay(win);
 }
 
+//! Triangulates a scan grid 'quad' (i.e. the 4 corners of a grid cell)
+/** The code below has been kindly provided by Romain Janvier.
+    \param cloud cloud the grid belongs to
+    \param v0 index of the top-left corner (negative if invalid)
+    \param v1 index of the top-right corner (negative if invalid)
+    \param v2 index of the bottom-left corner (negative if invalid)
+    \param v3 index of the bottom-right corner (negative if invalid)
+    \param sensorOrigin sensor origin (used to select the best triangulation of a full quad)
+    \param triangles output triangles
+    \return the number of output triangles (0, 1 or 2)
+**/
+static unsigned TriangulateGridQuad(const ccPointCloud& cloud,
+                                    int                 v0,
+                                    int                 v1,
+                                    int                 v2,
+                                    int                 v3,
+                                    const CCVector3&    sensorOrigin,
+                                    Tuple3i             triangles[2])
+{
+	const bool topo[4]{v0 >= 0, v1 >= 0, v2 >= 0, v3 >= 0};
+
+	int mask   = 0;
+	int pixels = 0;
+	for (int k = 0; k < 4; ++k)
+	{
+		if (topo[k])
+		{
+			mask |= 1 << k;
+			pixels += 1;
+		}
+	}
+
+	if (pixels < 3)
+	{
+		return 0;
+	}
+
+	const Tuple3i candidates[4]{
+	    {v0, v2, v1},
+	    {v0, v3, v1},
+	    {v0, v2, v3},
+	    {v1, v2, v3}};
+
+	int selected[2]{-1, -1};
+
+	switch (mask)
+	{
+	case 7:
+		selected[0] = 0;
+		break;
+	case 11:
+		selected[0] = 1;
+		break;
+	case 13:
+		selected[0] = 2;
+		break;
+	case 14:
+		selected[0] = 3;
+		break;
+	case 15:
+	{
+		/* Choose the triangulation with smaller diagonal. */
+		double d0     = (*cloud.getPoint(v0) - sensorOrigin).normd();
+		double d1     = (*cloud.getPoint(v1) - sensorOrigin).normd();
+		double d2     = (*cloud.getPoint(v2) - sensorOrigin).normd();
+		double d3     = (*cloud.getPoint(v3) - sensorOrigin).normd();
+		float  ddiff1 = std::abs(d0 - d3);
+		float  ddiff2 = std::abs(d1 - d2);
+		if (ddiff1 < ddiff2)
+		{
+			selected[0] = 1;
+			selected[1] = 2;
+		}
+		else
+		{
+			selected[0] = 0;
+			selected[1] = 3;
+		}
+		break;
+	}
+
+	default:
+		return 0;
+	}
+
+	unsigned triangleCount = 0;
+	for (int i = 0; i < 2; ++i)
+	{
+		if (selected[i] >= 0)
+		{
+			triangles[triangleCount++] = candidates[selected[i]];
+		}
+	}
+
+	return triangleCount;
+}
+
+//! Checks that all the angles of a triangle are below a given threshold (given as the cosine of the minimum angle)
+static bool CheckTriangleAngles(const CCVector3&    A,
+                                const CCVector3&    B,
+                                const CCVector3&    C,
+                                PointCoordinateType minAngleCos)
+{
+	CCVector3 uAB = (B - A);
+	uAB.normalize();
+	CCVector3 uCA = (A - C);
+	uCA.normalize();
+
+	PointCoordinateType cosA = -uCA.dot(uAB);
+	if (cosA > minAngleCos)
+	{
+		return false;
+	}
+
+	CCVector3 uBC = (C - B);
+	uBC.normalize();
+	PointCoordinateType cosB = -uAB.dot(uBC);
+	if (cosB > minAngleCos)
+	{
+		return false;
+	}
+
+	PointCoordinateType cosC = -uBC.dot(uCA);
+	if (cosC > minAngleCos)
+	{
+		return false;
+	}
+
+	return true;
+}
+
 bool ccPointCloud::computeNormalsWithGrids(double                       minTriangleAngle_deg /*=1.0*/,
                                            ccProgressDialog*            pDlg /*=nullptr*/,
                                            ccNormalVectors::Orientation preferredOrientation /*=ccNormalVectors::Orientation::UNDEFINED*/)
@@ -5937,113 +6068,21 @@ bool ccPointCloud::computeNormalsWithGrids(double                       minTrian
 				const int& v2 = scanGrid->indexes[(j + 1) * scanGrid->w + i];
 				const int& v3 = scanGrid->indexes[(j + 1) * scanGrid->w + (i + 1)];
 
-				bool topo[4]{v0 >= 0, v1 >= 0, v2 >= 0, v3 >= 0};
+				Tuple3i        tris[2];
+				const unsigned triCount = TriangulateGridQuad(*this, v0, v1, v2, v3, sensorOrigin, tris);
 
-				int mask   = 0;
-				int pixels = 0;
-
-				for (int j = 0; j < 4; ++j)
+				for (unsigned trCount = 0; trCount < triCount; ++trCount)
 				{
-					if (topo[j])
-					{
-						mask |= 1 << j;
-						pixels += 1;
-					}
-				}
-
-				if (pixels < 3)
-				{
-					continue;
-				}
-
-				Tuple3i tris[4]{
-				    {v0, v2, v1},
-				    {v0, v3, v1},
-				    {v0, v2, v3},
-				    {v1, v2, v3}};
-
-				int tri[2]{-1, -1};
-
-				switch (mask)
-				{
-				case 7:
-					tri[0] = 0;
-					break;
-				case 11:
-					tri[0] = 1;
-					break;
-				case 13:
-					tri[0] = 2;
-					break;
-				case 14:
-					tri[0] = 3;
-					break;
-				case 15:
-				{
-					/* Choose the triangulation with smaller diagonal. */
-					double d0     = (*getPoint(v0) - sensorOrigin).normd();
-					double d1     = (*getPoint(v1) - sensorOrigin).normd();
-					double d2     = (*getPoint(v2) - sensorOrigin).normd();
-					double d3     = (*getPoint(v3) - sensorOrigin).normd();
-					float  ddiff1 = std::abs(d0 - d3);
-					float  ddiff2 = std::abs(d1 - d2);
-					if (ddiff1 < ddiff2)
-					{
-						tri[0] = 1;
-						tri[1] = 2;
-					}
-					else
-					{
-						tri[0] = 0;
-						tri[1] = 3;
-					}
-					break;
-				}
-
-				default:
-					continue;
-				}
-
-				for (int trCount = 0; trCount < 2; ++trCount)
-				{
-					int idx = tri[trCount];
-					if (idx < 0)
-					{
-						continue;
-					}
-					const Tuple3i& t = tris[idx];
+					const Tuple3i& t = tris[trCount];
 
 					const CCVector3* A = getPoint(t.u[0]);
 					const CCVector3* B = getPoint(t.u[1]);
 					const CCVector3* C = getPoint(t.u[2]);
 
 					// now check the triangle angles
-					if (minTriangleAngle_deg > 0)
+					if (minTriangleAngle_deg > 0 && !CheckTriangleAngles(*A, *B, *C, minAngleCos))
 					{
-						CCVector3 uAB = (*B - *A);
-						uAB.normalize();
-						CCVector3 uCA = (*A - *C);
-						uCA.normalize();
-
-						PointCoordinateType cosA = -uCA.dot(uAB);
-						if (cosA > minAngleCos)
-						{
-							continue;
-						}
-
-						CCVector3 uBC = (*C - *B);
-						uBC.normalize();
-						PointCoordinateType cosB = -uAB.dot(uBC);
-						if (cosB > minAngleCos)
-						{
-							continue;
-						}
-
-						PointCoordinateType cosC = -uBC.dot(uCA);
-						if (cosC > minAngleCos)
-						{
-							continue;
-						}
+						continue;
 					}
 
 					// compute face normal (right hand rule)
@@ -6651,113 +6690,18 @@ ccMesh* ccPointCloud::triangulateGrid(const Grid& grid, double minTriangleAngle_
 			const int& v2 = grid.indexes[(j + 1) * grid.w + i];
 			const int& v3 = grid.indexes[(j + 1) * grid.w + (i + 1)];
 
-			bool topo[4] = {v0 >= 0, v1 >= 0, v2 >= 0, v3 >= 0};
+			Tuple3i        tris[2];
+			const unsigned triCount = TriangulateGridQuad(*this, v0, v1, v2, v3, sensorOrigin, tris);
 
-			int mask   = 0;
-			int pixels = 0;
-
-			for (int j = 0; j < 4; ++j)
+			for (unsigned trCount = 0; trCount < triCount; ++trCount)
 			{
-				if (topo[j])
-				{
-					mask |= 1 << j;
-					pixels += 1;
-				}
-			}
-
-			if (pixels < 3)
-			{
-				continue;
-			}
-
-			Tuple3i tris[4]{
-			    {v0, v2, v1},
-			    {v0, v3, v1},
-			    {v0, v2, v3},
-			    {v1, v2, v3}};
-
-			int tri[2]{-1, -1};
-
-			switch (mask)
-			{
-			case 7:
-				tri[0] = 0;
-				break;
-			case 11:
-				tri[0] = 1;
-				break;
-			case 13:
-				tri[0] = 2;
-				break;
-			case 14:
-				tri[0] = 3;
-				break;
-			case 15:
-			{
-				/* Choose the triangulation with smaller diagonal. */
-				double d0     = (*getPoint(v0) - sensorOrigin).normd();
-				double d1     = (*getPoint(v1) - sensorOrigin).normd();
-				double d2     = (*getPoint(v2) - sensorOrigin).normd();
-				double d3     = (*getPoint(v3) - sensorOrigin).normd();
-				float  ddiff1 = std::abs(d0 - d3);
-				float  ddiff2 = std::abs(d1 - d2);
-				if (ddiff1 < ddiff2)
-				{
-					tri[0] = 1;
-					tri[1] = 2;
-				}
-				else
-				{
-					tri[0] = 0;
-					tri[1] = 3;
-				}
-				break;
-			}
-
-			default:
-				continue;
-			}
-
-			for (int trCount = 0; trCount < 2; ++trCount)
-			{
-				int idx = tri[trCount];
-				if (idx < 0)
-				{
-					continue;
-				}
-				const Tuple3i& t = tris[idx];
+				const Tuple3i& t = tris[trCount];
 
 				// now check the triangle angles
-				if (minTriangleAngle_deg > 0)
+				if (minTriangleAngle_deg > 0
+				    && !CheckTriangleAngles(*getPoint(t.u[0]), *getPoint(t.u[1]), *getPoint(t.u[2]), minAngleCos))
 				{
-					const CCVector3* A = getPoint(t.u[0]);
-					const CCVector3* B = getPoint(t.u[1]);
-					const CCVector3* C = getPoint(t.u[2]);
-
-					CCVector3 uAB = (*B - *A);
-					uAB.normalize();
-					CCVector3 uCA = (*A - *C);
-					uCA.normalize();
-
-					PointCoordinateType cosA = -uCA.dot(uAB);
-					if (cosA > minAngleCos)
-					{
-						continue;
-					}
-
-					CCVector3 uBC = (*C - *B);
-					uBC.normalize();
-					PointCoordinateType cosB = -uAB.dot(uBC);
-					if (cosB > minAngleCos)
-					{
-						continue;
-					}
-
-					PointCoordinateType cosC = -uBC.dot(uCA);
-					if (cosC > minAngleCos)
-					{
-						continue;
-					}
+					continue;
 				}
 
 				mesh->addTriangle(t.u[0], t.u[1], t.u[2]);

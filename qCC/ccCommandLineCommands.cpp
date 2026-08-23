@@ -8274,6 +8274,51 @@ bool CommandSetVerbosity::process(ccCommandLineInterface& cmd)
 	return true;
 }
 
+//! Returns the loaded clouds as a container of entities
+static ccHObject::Container GetCloudsAsEntities(const ccCommandLineInterface& cmd)
+{
+	ccHObject::Container entities;
+	entities.resize(cmd.clouds().size());
+	for (size_t i = 0; i < cmd.clouds().size(); ++i)
+	{
+		entities[i] = cmd.clouds()[i].pc;
+	}
+
+	return entities;
+}
+
+//! Returns the first sensor associated to an entity (nullptr if none)
+static ccSensor* GetFirstSensor(ccHObject* entity)
+{
+	for (unsigned childPos = 0; childPos < entity->getChildrenNumber(); ++childPos)
+	{
+		ccSensor* sensor = ccHObjectCaster::ToSensor(entity->getChild(childPos));
+		if (sensor)
+		{
+			return sensor;
+		}
+	}
+
+	return nullptr;
+}
+
+//! Returns a cloud scalar field, and creates it if it doesn't exist yet (nullptr if it can't be created)
+static CCCoreLib::ScalarField* GetOrCreateScalarField(ccCommandLineInterface& cmd, ccPointCloud& cloud, const char* sfName)
+{
+	int sfIdx = cloud.getScalarFieldIndexByName(sfName);
+	if (sfIdx < 0)
+	{
+		sfIdx = cloud.addScalarField(sfName);
+		if (sfIdx < 0)
+		{
+			cmd.error(QObject::tr("Not enough memory!"));
+			return nullptr;
+		}
+	}
+
+	return cloud.getScalarField(sfIdx);
+}
+
 CommandComputeDistancesFromSensor::CommandComputeDistancesFromSensor()
     : ccCommandLineInterface::Command(QObject::tr("Compute distances from sensor"), COMMAND_COMPUTE_DISTANCES_FROM_SENSOR)
 {
@@ -8297,28 +8342,13 @@ bool CommandComputeDistancesFromSensor::process(ccCommandLineInterface& cmd)
 	}
 
 	// Call MainWindow generic method
-	ccHObject::Container entities;
-	entities.resize(cmd.clouds().size());
-	for (size_t i = 0; i < cmd.clouds().size(); ++i)
-	{
-		entities[i] = cmd.clouds()[i].pc;
-	}
+	ccHObject::Container entities = GetCloudsAsEntities(cmd);
 
 	for (ccHObject* entity : entities)
 	{
-		unsigned  childrenNumber = entity->getChildrenNumber();
-		ccSensor* sensor{nullptr};
-		for (unsigned childPos = 0; childPos < childrenNumber; childPos++)
-		{
-			sensor = ccHObjectCaster::ToSensor(entity->getChild(childPos));
-			if (sensor)
-				break; // once a sensor is found, break the loop
-		}
-
+		ccSensor* sensor = GetFirstSensor(entity);
 		if (!sensor)
 			continue;
-
-		assert(sensor); // at this step we should have a sensor associated to the cloud
 
 		// get associated cloud
 		ccPointCloud* cloud = ccHObjectCaster::ToPointCloud(entity);
@@ -8337,18 +8367,12 @@ bool CommandComputeDistancesFromSensor::process(ccCommandLineInterface& cmd)
 		}
 
 		// set up a new scalar field
-		const char* defaultRangesSFname = squared ? CC_DEFAULT_SQUARED_RANGES_SF_NAME : CC_DEFAULT_RANGES_SF_NAME;
-		int         sfIdx               = cloud->getScalarFieldIndexByName(defaultRangesSFname);
-		if (sfIdx < 0)
+		const char*             defaultRangesSFname = squared ? CC_DEFAULT_SQUARED_RANGES_SF_NAME : CC_DEFAULT_RANGES_SF_NAME;
+		CCCoreLib::ScalarField* distances           = GetOrCreateScalarField(cmd, *cloud, defaultRangesSFname);
+		if (!distances)
 		{
-			sfIdx = cloud->addScalarField(defaultRangesSFname);
-			if (sfIdx < 0)
-			{
-				cmd.error(QObject::tr("Not enough memory!"));
-				return false;
-			}
+			return false;
 		}
-		CCCoreLib::ScalarField* distances = cloud->getScalarField(sfIdx);
 
 		// perform computation
 		for (unsigned i = 0; i < cloud->size(); ++i)
@@ -8393,28 +8417,13 @@ bool CommandComputeScatteringAngles::process(ccCommandLineInterface& cmd)
 	}
 
 	// Call MainWindow generic method
-	ccHObject::Container entities;
-	entities.resize(cmd.clouds().size());
-	for (size_t i = 0; i < cmd.clouds().size(); ++i)
-	{
-		entities[i] = cmd.clouds()[i].pc;
-	}
+	ccHObject::Container entities = GetCloudsAsEntities(cmd);
 
 	for (ccHObject* entity : entities)
 	{
-		unsigned  childrenNumber = entity->getChildrenNumber();
-		ccSensor* sensor{nullptr};
-		for (unsigned childPos = 0; childPos < childrenNumber; childPos++)
-		{
-			sensor = ccHObjectCaster::ToSensor(entity->getChild(childPos));
-			if (sensor)
-				break; // once a sensor is found, break the loop
-		}
-
+		ccSensor* sensor = GetFirstSensor(entity);
 		if (!sensor)
 			continue;
-
-		assert(sensor); // at this step we should have a sensor associated to the cloud
 
 		// get associated cloud
 		ccPointCloud* cloud = ccHObjectCaster::ToPointCloud(entity);
@@ -8439,18 +8448,12 @@ bool CommandComputeScatteringAngles::process(ccCommandLineInterface& cmd)
 		}
 
 		// set up a new scalar field
-		const char* defaultScatAnglesSFname = toDegreeFlag ? CC_DEFAULT_DEG_SCATTERING_ANGLES_SF_NAME : CC_DEFAULT_RAD_SCATTERING_ANGLES_SF_NAME;
-		int         sfIdx                   = cloud->getScalarFieldIndexByName(defaultScatAnglesSFname);
-		if (sfIdx < 0)
+		const char*             defaultScatAnglesSFname = toDegreeFlag ? CC_DEFAULT_DEG_SCATTERING_ANGLES_SF_NAME : CC_DEFAULT_RAD_SCATTERING_ANGLES_SF_NAME;
+		CCCoreLib::ScalarField* angles                  = GetOrCreateScalarField(cmd, *cloud, defaultScatAnglesSFname);
+		if (!angles)
 		{
-			sfIdx = cloud->addScalarField(defaultScatAnglesSFname);
-			if (sfIdx < 0)
-			{
-				cmd.error(QObject::tr("Not enough memory!"));
-				return false;
-			}
+			return false;
 		}
-		CCCoreLib::ScalarField* angles = cloud->getScalarField(sfIdx);
 
 		// perform computation
 		for (unsigned i = 0; i < cloud->size(); ++i)

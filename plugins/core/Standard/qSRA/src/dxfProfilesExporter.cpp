@@ -58,6 +58,218 @@ struct VertStepData
 	double deviation;
 };
 
+#ifdef CC_DXF_SUPPORT
+
+//! Writes the DXF header (including the page dimensions) then opens the 'tables' section
+static void WriteDxfHeaderAndOpenTables(DL_Dxf& dxf, DL_WriterA* dw)
+{
+	//write header
+	dxf.writeHeader(*dw);
+
+	//add dimensions
+	dw->dxfString(9, "$INSBASE");
+	dw->dxfReal(10,0.0);
+	dw->dxfReal(20,0.0);
+	dw->dxfReal(30,0.0);
+	dw->dxfString(9, "$EXTMIN");
+	dw->dxfReal(10,0.0);
+	dw->dxfReal(20,0.0);
+	dw->dxfReal(30,0.0);
+	dw->dxfString(9, "$EXTMAX");
+	dw->dxfReal(10,c_pageWidth_mm);
+	dw->dxfReal(20,c_pageHeight_mm);
+	dw->dxfReal(30,0.0);
+	dw->dxfString(9, "$LIMMIN");
+	dw->dxfReal(10,0.0);
+	dw->dxfReal(20,0.0);
+	dw->dxfString(9, "$LIMMAX");
+	dw->dxfReal(10,c_pageWidth_mm);
+	dw->dxfReal(20,c_pageHeight_mm);
+
+	//close header
+	dw->sectionEnd();
+
+	//Opening the Tables Section
+	dw->sectionTables();
+	//Writing the Viewports
+	dxf.writeVPort(*dw);
+
+	//Writing the Linetypes (all by default)
+	{
+		dw->tableLinetypes(3);
+		dxf.writeLinetype(*dw, DL_LinetypeData("BYBLOCK", "BYBLOCK", 0, 0, 0.0));
+		dxf.writeLinetype(*dw, DL_LinetypeData("BYLAYER", "BYLAYER", 0, 0, 0.0));
+		dxf.writeLinetype(*dw, DL_LinetypeData("CONTINUOUS", "Continuous", 0, 0, 0.0));
+		dw->tableEnd();
+	}
+}
+
+//! Writes the default layer
+static void WriteDefaultLayer(DL_Dxf& dxf, DL_WriterA* dw)
+{
+	dxf.writeLayer(*dw, 
+		DL_LayerData("0", 0), 
+		DL_Attributes(
+		std::string(""),		// leave empty
+		DL_Codes::black,		// default color
+		100,					// default width (in 1/100 mm)
+		"CONTINUOUS",			// default line style
+		1.0						// linetypeScale
+		));
+}
+
+//! Writes the legend layer
+static void WriteLegendLayer(DL_Dxf& dxf, DL_WriterA* dw)
+{
+	dxf.writeLayer(*dw, 
+		DL_LayerData(LEGEND_LAYER, 0), 
+		DL_Attributes(
+		std::string(""),
+		DL_Codes::black,
+		s_lineWidth,
+		"CONTINUOUS",
+		1.0));
+}
+
+//! Writes the remaining tables (styles, views, dimensions, etc.), closes the 'tables' section, then writes the 'blocks' section
+static void WriteDxfOtherTablesAndBlocks(DL_Dxf& dxf, DL_WriterA* dw)
+{
+	//Writing Various Other Tables
+	//dxf.writeStyle(*dw); //DXFLIB V2.5
+	dw->tableStyle(1);
+	dxf.writeStyle(*dw, DL_StyleData("Standard", 0, 0.0, 0.75, 0.0, 0, 2.5, "txt", "")); //DXFLIB V3.3
+	dw->tableEnd();
+
+	dxf.writeView(*dw);
+	dxf.writeUcs(*dw);
+
+	dw->tableAppid(1);
+	dw->tableAppidEntry(0x12);
+	dw->dxfString(2, "ACAD");
+	dw->dxfInt(70, 0);
+	dw->tableEnd();
+
+	//Writing Dimension Styles
+	dxf.writeDimStyle(	*dw, 
+						/*arrowSize*/1, 
+						/*extensionLineExtension*/1,
+						/*extensionLineOffset*/1,
+						/*dimensionGap*/1,
+						/*dimensionTextSize*/1);
+	
+	//Writing Block Records
+	dxf.writeBlockRecord(*dw);
+	dw->tableEnd();
+
+	//Ending the Tables Section
+	dw->sectionEnd();
+
+	//Writing the Blocks Section
+	{
+		dw->sectionBlocks();
+
+		dxf.writeBlock(*dw,  DL_BlockData("*Model_Space", 0, 0.0, 0.0, 0.0));
+		dxf.writeEndBlock(*dw, "*Model_Space");
+
+		dxf.writeBlock(*dw, DL_BlockData("*Paper_Space", 0, 0.0, 0.0, 0.0));
+		dxf.writeEndBlock(*dw, "*Paper_Space");
+
+		dxf.writeBlock(*dw, DL_BlockData("*Paper_Space0", 0, 0.0, 0.0, 0.0));
+		dxf.writeEndBlock(*dw, "*Paper_Space0");
+
+		dw->sectionEnd();
+	}
+}
+
+//! Writes the page contour (as a closed polyline)
+static void WritePageContour(DL_Dxf& dxf, DL_WriterA* dw, const DL_Attributes& material)
+{
+	dxf.writePolyline(	*dw,
+						DL_PolylineData(4, 0, 0, 1),
+						material);
+
+	dxf.writeVertex(*dw, DL_VertexData(	c_pageMargin_mm, c_pageMargin_mm, 0.0));
+	dxf.writeVertex(*dw, DL_VertexData(	c_pageMargin_mm, c_pageHeight_mm-c_pageMargin_mm, 0.0));
+	dxf.writeVertex(*dw, DL_VertexData(	c_pageWidth_mm-c_pageMargin_mm, c_pageHeight_mm-c_pageMargin_mm, 0.0));
+	dxf.writeVertex(*dw, DL_VertexData(	c_pageWidth_mm-c_pageMargin_mm, c_pageMargin_mm, 0.0));
+
+	dxf.writePolylineEnd(*dw);
+}
+
+//! Writes the legend labels (deviation magnification factor, deviation units and profile lines)
+/** \param yLegend vertical position of the first label (updated as the labels are written)
+**/
+static void WriteLegendLabels(	DL_Dxf& dxf,
+								DL_WriterA* dw,
+								const DxfProfilesExporter::Parameters& params,
+								double xLegend,
+								double& yLegend,
+								double legendWidth_mm,
+								const DL_Attributes& material)
+{
+	//deviation magnification factor
+	QString magnifyStr = QString::number(params.devMagnifyCoef);
+	dxf.writeText(	*dw,
+		DL_TextData(xLegend, yLegend, 0.0, xLegend, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(QString("Deviation magnification factor: ") + magnifyStr), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
+		material);
+
+	//next line
+	yLegend += c_textHeight_mm*2.0;
+
+	//units
+	dxf.writeText(*dw,
+		DL_TextData(xLegend, yLegend, 0.0, xLegend, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(QString("Deviation units: ") + params.scaledDevUnits), "STANDARD", 0.0),
+		material);
+
+	//next line
+	yLegend += c_textHeight_mm*2.0;
+
+	//true profile line (green)
+	dxf.writeLine(	*dw,
+					DL_LineData(xLegend, yLegend, 0, xLegend + legendWidth_mm, yLegend, 0.0),
+					DL_Attributes(LEGEND_LAYER, DL_Codes::green, -1, "BYLAYER", 1.0));
+
+	dxf.writeText(	*dw,
+					DL_TextData(xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(params.legendRealProfileTitle), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
+					material);
+
+	//next line
+	yLegend += c_textHeight_mm*2.0;
+
+	//theoretical profile line (red)
+	dxf.writeLine(	*dw,
+					DL_LineData(xLegend, yLegend, 0, xLegend + legendWidth_mm, yLegend, 0.0),
+					DL_Attributes(LEGEND_LAYER, DL_Codes::red, -1, "BYLAYER", 1.0));
+
+	dxf.writeText(	*dw,
+					DL_TextData(xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(params.legendTheoProfileTitle), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
+					material);
+}
+
+//! Deduces the theoretical profile radius at a given height (by linear interpolation)
+/** \return whether a valid radius could be deduced or not
+**/
+static bool InterpolateProfileRadius(const ccPolyline* profile, double height, double heightShift, double& radius)
+{
+	for (unsigned i = 1; i < profile->size(); ++i)
+	{
+		const CCVector3* A = profile->getPoint(i - 1);
+		const CCVector3* B = profile->getPoint(i);
+
+		double alpha = (height - A->y - heightShift) / (B->y - A->y);
+		if (alpha >= 0.0 && alpha <= 1.0)
+		{
+			//we deduce the right radius by linear interpolation
+			radius = A->x + alpha * (B->x - A->x);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+#endif //CC_DXF_SUPPORT
+
 bool DxfProfilesExporter::SaveVerticalProfiles(	const QSharedPointer<DistanceMapGenerationTool::Map>& map,
 												ccPolyline* profile,
 												QString filename,
@@ -110,60 +322,14 @@ bool DxfProfilesExporter::SaveVerticalProfiles(	const QSharedPointer<DistanceMap
 		return false;
 	}
 
-	//write header
-	dxf.writeHeader(*dw);
-
-	//add dimensions
-	dw->dxfString(9, "$INSBASE");
-	dw->dxfReal(10,0.0);
-	dw->dxfReal(20,0.0);
-	dw->dxfReal(30,0.0);
-	dw->dxfString(9, "$EXTMIN");
-	dw->dxfReal(10,0.0);
-	dw->dxfReal(20,0.0);
-	dw->dxfReal(30,0.0);
-	dw->dxfString(9, "$EXTMAX");
-	dw->dxfReal(10,c_pageWidth_mm);
-	dw->dxfReal(20,c_pageHeight_mm);
-	dw->dxfReal(30,0.0);
-	dw->dxfString(9, "$LIMMIN");
-	dw->dxfReal(10,0.0);
-	dw->dxfReal(20,0.0);
-	dw->dxfString(9, "$LIMMAX");
-	dw->dxfReal(10,c_pageWidth_mm);
-	dw->dxfReal(20,c_pageHeight_mm);
-
-	//close header
-	dw->sectionEnd();
-
-	//Opening the Tables Section
-	dw->sectionTables();
-	//Writing the Viewports
-	dxf.writeVPort(*dw);
-
-	//Writing the Linetypes (all by default)
-	{
-		dw->tableLinetypes(3);
-		dxf.writeLinetype(*dw, DL_LinetypeData("BYBLOCK", "BYBLOCK", 0, 0, 0.0));
-		dxf.writeLinetype(*dw, DL_LinetypeData("BYLAYER", "BYLAYER", 0, 0, 0.0));
-		dxf.writeLinetype(*dw, DL_LinetypeData("CONTINUOUS", "Continuous", 0, 0, 0.0));
-		dw->tableEnd();
-	}
+	WriteDxfHeaderAndOpenTables(dxf, dw);
 
 	//Writing the Layers
 	dw->tableLayers(angularStepCount+3);
 	QStringList profileNames;
 	{
 		//default layer
-		dxf.writeLayer(*dw, 
-			DL_LayerData("0", 0), 
-			DL_Attributes(
-			std::string(""),		// leave empty
-			DL_Codes::black,		// default color
-			100,					// default width (in 1/100 mm)
-			"CONTINUOUS",			// default line style
-			1.0						// linetypeScale
-			));
+		WriteDefaultLayer(dxf, dw);
 
 		//theoretical profile layer
 		dxf.writeLayer(*dw, 
@@ -176,14 +342,7 @@ bool DxfProfilesExporter::SaveVerticalProfiles(	const QSharedPointer<DistanceMap
 			1.0));
 
 		//legend layer
-		dxf.writeLayer(*dw, 
-			DL_LayerData(LEGEND_LAYER, 0), 
-			DL_Attributes(
-			std::string(""),
-			DL_Codes::black,
-			s_lineWidth,
-			"CONTINUOUS",
-			1.0));
+		WriteLegendLayer(dxf, dw);
 
 		//vert. profile layers
 		for (unsigned i=0; i<angularStepCount; ++i)
@@ -211,53 +370,7 @@ bool DxfProfilesExporter::SaveVerticalProfiles(	const QSharedPointer<DistanceMap
 	}
 	dw->tableEnd();
 
-	//Writing Various Other Tables
-	//dxf.writeStyle(*dw); //DXFLIB V2.5
-	dw->tableStyle(1);
-	dxf.writeStyle(*dw, DL_StyleData("Standard", 0, 0.0, 0.75, 0.0, 0, 2.5, "txt", "")); //DXFLIB V3.3
-	dw->tableEnd();
-
-	dxf.writeView(*dw);
-	dxf.writeUcs(*dw);
-
-	dw->tableAppid(1);
-	dw->tableAppidEntry(0x12);
-	dw->dxfString(2, "ACAD");
-	dw->dxfInt(70, 0);
-	dw->tableEnd();
-
-	//Writing Dimension Styles
-	dxf.writeDimStyle(	*dw, 
-						/*arrowSize*/1, 
-						/*extensionLineExtension*/1,
-						/*extensionLineOffset*/1,
-						/*dimensionGap*/1,
-						/*dimensionTextSize*/1);
-	
-	//Writing Block Records
-	dxf.writeBlockRecord(*dw);
-	//dxf.writeBlockRecord(*dw, "myblock1");
-	//dxf.writeBlockRecord(*dw, "myblock2");
-	dw->tableEnd();
-
-	//Ending the Tables Section
-	dw->sectionEnd();
-
-	//Writing the Blocks Section
-	{
-		dw->sectionBlocks();
-
-		dxf.writeBlock(*dw,  DL_BlockData("*Model_Space", 0, 0.0, 0.0, 0.0));
-		dxf.writeEndBlock(*dw, "*Model_Space");
-
-		dxf.writeBlock(*dw, DL_BlockData("*Paper_Space", 0, 0.0, 0.0, 0.0));
-		dxf.writeEndBlock(*dw, "*Paper_Space");
-
-		dxf.writeBlock(*dw, DL_BlockData("*Paper_Space0", 0, 0.0, 0.0, 0.0));
-		dxf.writeEndBlock(*dw, "*Paper_Space0");
-
-		dw->sectionEnd();
-	}
+	WriteDxfOtherTablesAndBlocks(dxf, dw);
 
 	//Writing the Entities Section
 	{
@@ -306,60 +419,13 @@ bool DxfProfilesExporter::SaveVerticalProfiles(	const QSharedPointer<DistanceMap
 			DL_Attributes DefaultLegendMaterial(LEGEND_LAYER, DL_Codes::bylayer, -1, "BYLAYER", 1.0);
 
 			//write page contour
-			{
-				dxf.writePolyline(	*dw,
-									DL_PolylineData(4, 0, 0, 1),
-									DefaultLegendMaterial);
-
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageMargin_mm, c_pageMargin_mm, 0.0));
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageMargin_mm, c_pageHeight_mm-c_pageMargin_mm, 0.0));
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageWidth_mm-c_pageMargin_mm, c_pageHeight_mm-c_pageMargin_mm, 0.0));
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageWidth_mm-c_pageMargin_mm, c_pageMargin_mm, 0.0));
-
-				dxf.writePolylineEnd(*dw);
-			}
+			WritePageContour(dxf, dw, DefaultLegendMaterial);
 
 			double xLegend = c_pageMargin_mm + 2.0*c_textHeight_mm;
 			double yLegend = c_pageMargin_mm + 2.0*c_textHeight_mm;
 			const double legendWidth_mm = 20.0;
-			
-			//deviation magnification factor
-			QString magnifyStr = QString::number(params.devMagnifyCoef);
-			dxf.writeText(	*dw,
-				DL_TextData(xLegend, yLegend, 0.0, xLegend, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(QString("Deviation magnification factor: ") + magnifyStr), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
-				DefaultLegendMaterial);
 
-			//next line
-			yLegend += c_textHeight_mm*2.0;
-
-			//units
-			dxf.writeText(*dw,
-				DL_TextData(xLegend, yLegend, 0.0, xLegend, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(QString("Deviation units: ") + params.scaledDevUnits), "STANDARD", 0.0),
-				DefaultLegendMaterial);
-
-			//next line
-			yLegend += c_textHeight_mm*2.0;
-
-			//true profile line (red)
-			dxf.writeLine(	*dw,
-							DL_LineData(xLegend, yLegend, 0, xLegend + legendWidth_mm, yLegend, 0.0),
-							DL_Attributes(LEGEND_LAYER, DL_Codes::green, -1, "BYLAYER", 1.0));
-
-			dxf.writeText(	*dw,
-							DL_TextData(xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(params.legendRealProfileTitle), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
-							DefaultLegendMaterial);
-
-			//next line
-			yLegend += c_textHeight_mm*2.0;
-
-			//theoretical profile line (red)
-			dxf.writeLine(	*dw,
-							DL_LineData(xLegend, yLegend, 0, xLegend + legendWidth_mm, yLegend, 0.0),
-							DL_Attributes(LEGEND_LAYER, DL_Codes::red, -1, "BYLAYER", 1.0));
-
-			dxf.writeText(	*dw,
-							DL_TextData(xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(params.legendTheoProfileTitle), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
-							DefaultLegendMaterial);
+			WriteLegendLabels(dxf, dw, params, xLegend, yLegend, legendWidth_mm, DefaultLegendMaterial);
 		}
 
 		//write vertical profiles
@@ -390,23 +456,7 @@ bool DxfProfilesExporter::SaveVerticalProfiles(	const QSharedPointer<DistanceMap
 				if (step.height >= yMin && step.height <= yMax)
 				{
 					//find corresponding radius
-					bool found = false;
-					for (unsigned i = 1; i < profile->size(); ++i)
-					{
-						const CCVector3* A = profile->getPoint(i - 1);
-						const CCVector3* B = profile->getPoint(i);
-
-						double alpha = (step.height - A->y - heightShift) / (B->y - A->y);
-						if (alpha >= 0.0 && alpha <= 1.0)
-						{
-							//we deduce the right radius by linear interpolation
-							step.radius_th = A->x + alpha * (B->x - A->x);
-							found = true;
-							break;
-						}
-					}
-
-					if (found)
+					if (InterpolateProfileRadius(profile, step.height, heightShift, step.radius_th))
 					{
 						step.deviation = cell.count ? cell.value : 0.0;
 						polySteps.push_back(step);
@@ -603,70 +653,17 @@ bool DxfProfilesExporter::SaveHorizontalProfiles(	const QSharedPointer<DistanceM
 		return false;
 	}
 
-	//write header
-	dxf.writeHeader(*dw);
-
-	//add dimensions
-	dw->dxfString(9, "$INSBASE");
-	dw->dxfReal(10,0.0);
-	dw->dxfReal(20,0.0);
-	dw->dxfReal(30,0.0);
-	dw->dxfString(9, "$EXTMIN");
-	dw->dxfReal(10,0.0);
-	dw->dxfReal(20,0.0);
-	dw->dxfReal(30,0.0);
-	dw->dxfString(9, "$EXTMAX");
-	dw->dxfReal(10,c_pageWidth_mm);
-	dw->dxfReal(20,c_pageHeight_mm);
-	dw->dxfReal(30,0.0);
-	dw->dxfString(9, "$LIMMIN");
-	dw->dxfReal(10,0.0);
-	dw->dxfReal(20,0.0);
-	dw->dxfString(9, "$LIMMAX");
-	dw->dxfReal(10,c_pageWidth_mm);
-	dw->dxfReal(20,c_pageHeight_mm);
-
-	//close header
-	dw->sectionEnd();
-
-	//Opening the Tables Section
-	dw->sectionTables();
-	//Writing the Viewports
-	dxf.writeVPort(*dw);
-
-	//Writing the Linetypes (all by default)
-	{
-		dw->tableLinetypes(3);
-		dxf.writeLinetype(*dw, DL_LinetypeData("BYBLOCK", "BYBLOCK", 0, 0, 0.0));
-		dxf.writeLinetype(*dw, DL_LinetypeData("BYLAYER", "BYLAYER", 0, 0, 0.0));
-		dxf.writeLinetype(*dw, DL_LinetypeData("CONTINUOUS", "Continuous", 0, 0, 0.0));
-		dw->tableEnd();
-	}
+	WriteDxfHeaderAndOpenTables(dxf, dw);
 
 	//Writing the Layers
 	dw->tableLayers(heightStepCount+2);
 	QStringList profileNames;
 	{
 		//default layer
-		dxf.writeLayer(*dw, 
-			DL_LayerData("0", 0), 
-			DL_Attributes(
-			std::string(""),		// leave empty
-			DL_Codes::black,		// default color
-			100,					// default width (in 1/100 mm)
-			"CONTINUOUS",			// default line style
-			1.0						// linetypeScale
-			));
+		WriteDefaultLayer(dxf, dw);
 
 		//legend layer
-		dxf.writeLayer(*dw, 
-			DL_LayerData(LEGEND_LAYER, 0), 
-			DL_Attributes(
-			std::string(""),
-			DL_Codes::black,
-			s_lineWidth,
-			"CONTINUOUS",
-			1.0));
+		WriteLegendLayer(dxf, dw);
 
 		//horiz. profile layers
 		for (unsigned i=0; i<heightStepCount; ++i)
@@ -696,51 +693,7 @@ bool DxfProfilesExporter::SaveHorizontalProfiles(	const QSharedPointer<DistanceM
 	}
 	dw->tableEnd();
 
-	//Writing Various Other Tables
-	//dxf.writeStyle(*dw); //DXFLIB V2.5
-	dw->tableStyle(1);
-	dxf.writeStyle(*dw, DL_StyleData("Standard", 0, 0.0, 0.75, 0.0, 0, 2.5, "txt", "")); //DXFLIB V3.3
-	dw->tableEnd();
-
-	dxf.writeView(*dw);
-	dxf.writeUcs(*dw);
-
-	dw->tableAppid(1);
-	dw->tableAppidEntry(0x12);
-	dw->dxfString(2, "ACAD");
-	dw->dxfInt(70, 0);
-	dw->tableEnd();
-
-	//Writing Dimension Styles
-	dxf.writeDimStyle(	*dw, 
-						/*arrowSize*/1, 
-						/*extensionLineExtension*/1,
-						/*extensionLineOffset*/1,
-						/*dimensionGap*/1,
-						/*dimensionTextSize*/1);
-	
-	//Writing Block Records
-	dxf.writeBlockRecord(*dw);
-	dw->tableEnd();
-
-	//Ending the Tables Section
-	dw->sectionEnd();
-
-	//Writing the Blocks Section
-	{
-		dw->sectionBlocks();
-
-		dxf.writeBlock(*dw,  DL_BlockData("*Model_Space", 0, 0.0, 0.0, 0.0));
-		dxf.writeEndBlock(*dw, "*Model_Space");
-
-		dxf.writeBlock(*dw, DL_BlockData("*Paper_Space", 0, 0.0, 0.0, 0.0));
-		dxf.writeEndBlock(*dw, "*Paper_Space");
-
-		dxf.writeBlock(*dw, DL_BlockData("*Paper_Space0", 0, 0.0, 0.0, 0.0));
-		dxf.writeEndBlock(*dw, "*Paper_Space0");
-
-		dw->sectionEnd();
-	}
+	WriteDxfOtherTablesAndBlocks(dxf, dw);
 
 	//Writing the Entities Section
 	{
@@ -762,18 +715,7 @@ bool DxfProfilesExporter::SaveHorizontalProfiles(	const QSharedPointer<DistanceM
 			DL_Attributes DefaultLegendMaterial(LEGEND_LAYER, DL_Codes::bylayer, -1, "BYLAYER", 1.0);
 
 			//write page contour
-			{
-				dxf.writePolyline(	*dw,
-									DL_PolylineData(4, 0, 0, 1),
-									DefaultLegendMaterial);
-
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageMargin_mm, c_pageMargin_mm, 0.0));
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageMargin_mm, c_pageHeight_mm-c_pageMargin_mm, 0.0));
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageWidth_mm-c_pageMargin_mm, c_pageHeight_mm-c_pageMargin_mm, 0.0));
-				dxf.writeVertex(*dw, DL_VertexData(	c_pageWidth_mm-c_pageMargin_mm, c_pageMargin_mm, 0.0));
-
-				dxf.writePolylineEnd(*dw);
-			}
+			WritePageContour(dxf, dw, DefaultLegendMaterial);
 
 			double xLegend = c_pageMargin_mm + 2.0*c_textHeight_mm;
 			double yLegend = c_pageMargin_mm + 2.0*c_textHeight_mm;
@@ -801,44 +743,8 @@ bool DxfProfilesExporter::SaveHorizontalProfiles(	const QSharedPointer<DistanceM
 								DL_TextData(xc, yc - (axisTip + 2.0*axisTipSize), 0.0, xc, yc - (axisTip + 2.0*axisTipSize), 0.0, c_textHeight_mm, 1.0, 0, 1, 3, "Y", "STANDARD", 0.0),
 								DefaultLegendMaterial);
 			}
-			
-			//deviation magnification factor
-			QString magnifyStr = QString::number(params.devMagnifyCoef);
-			dxf.writeText(	*dw,
-							DL_TextData(xLegend, yLegend, 0.0, xLegend, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(QString("Deviation magnification factor: ") + magnifyStr), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
-							DefaultLegendMaterial);
 
-			//next line
-			yLegend += c_textHeight_mm*2.0;
-
-			//units
-			dxf.writeText(	*dw,
-							DL_TextData(xLegend, yLegend, 0.0, xLegend, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(QString("Deviation units: ") + params.scaledDevUnits), "STANDARD", 0.0), //DGM: warning, toStdString doesn't preserve "local" characters
-							DefaultLegendMaterial);
-
-			//next line
-			yLegend += c_textHeight_mm*2.0;
-
-			//true profile line (red)
-			dxf.writeLine(	*dw,
-							DL_LineData(xLegend, yLegend, 0, xLegend + legendWidth_mm, yLegend, 0.0),
-							DL_Attributes(LEGEND_LAYER, DL_Codes::green, -1, "BYLAYER", 1.0));
-
-			dxf.writeText(	*dw,
-							DL_TextData(xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(params.legendRealProfileTitle), "STANDARD", 0.0),
-							DefaultLegendMaterial);
-
-			//next line
-			yLegend += c_textHeight_mm*2.0;
-
-			//theoretical profile line (red)
-			dxf.writeLine(	*dw,
-							DL_LineData(xLegend, yLegend, 0, xLegend + legendWidth_mm, yLegend, 0.0),
-							DL_Attributes(LEGEND_LAYER, DL_Codes::red, -1, "BYLAYER", 1.0));
-
-			dxf.writeText(	*dw,
-							DL_TextData(xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, xLegend + legendWidth_mm + c_textMargin_mm, yLegend, 0.0, c_textHeight_mm, 1.0, 0, 0, 0, qPrintable(params.legendTheoProfileTitle), "STANDARD", 0.0),
-							DefaultLegendMaterial);
+			WriteLegendLabels(dxf, dw, params, xLegend, yLegend, legendWidth_mm, DefaultLegendMaterial);
 		}
 
 		//profile values (fixed size: one per angular step of the input grid)
@@ -873,28 +779,10 @@ bool DxfProfilesExporter::SaveHorizontalProfiles(	const QSharedPointer<DistanceM
 
 			//find corresponding radius
 			double currentRadius = 0.0;
+			if (!InterpolateProfileRadius(profile, height, heightShift, currentRadius))
 			{
-				bool found = false;
-				for (unsigned i = 1; i < profile->size(); ++i)
-				{
-					const CCVector3* A = profile->getPoint(i - 1);
-					const CCVector3* B = profile->getPoint(i);
-
-					double alpha = (height - A->y - heightShift) / (B->y - A->y);
-					if (alpha >= 0.0 && alpha <= 1.0)
-					{
-						//we deduce the right radius by linear interpolation
-						currentRadius = A->x + alpha * (B->x - A->x);
-						found = true;
-						break;
-					}
-				}
-
-				if (!found)
-				{
-					assert(false); //we have computed yMin and yMax so that 'height' is totally included inside the profile's boundaries...
-					continue;
-				}
+				assert(false); //we have computed yMin and yMax so that 'height' is totally included inside the profile's boundaries...
+				continue;
 			}
 
 			const QString& currentLayer = profileNames[heightStep];

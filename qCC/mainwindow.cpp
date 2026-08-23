@@ -190,6 +190,46 @@ static QFileDialog::Options CCFileDialogOptions()
 	return dialogOptions;
 }
 
+//! Asks the user for an output CSV file and opens it
+/** The 'current path' persistent setting is updated on success.
+    \param parent parent widget (for the file dialog)
+    \param csvFile output file
+    \return whether the file could be opened (false if the user cancelled the operation, or if the file can't be written to)
+**/
+static bool AskForOutputCSVFile(QWidget* parent, QFile& csvFile)
+{
+	// persistent settings
+	QSettings settings;
+	settings.beginGroup(ccPS::SaveFile());
+	QString currentPath = settings.value(ccPS::CurrentPath(), ccFileUtils::defaultDocPath()).toString();
+
+	QString outputFilename = QFileDialog::getSaveFileName(parent,
+	                                                      MainWindow::tr("Select output file"),
+	                                                      currentPath,
+	                                                      "*.csv",
+	                                                      nullptr,
+	                                                      CCFileDialogOptions());
+
+	if (outputFilename.isEmpty())
+	{
+		// process cancelled by the user
+		return false;
+	}
+
+	csvFile.setFileName(outputFilename);
+	if (!csvFile.open(QFile::WriteOnly | QFile::Text))
+	{
+		ccConsole::Error(MainWindow::tr("Failed to open file for writing! (check file permissions)"));
+		return false;
+	}
+
+	// save last saving location
+	settings.setValue(ccPS::CurrentPath(), QFileInfo(outputFilename).absolutePath());
+	settings.endGroup();
+
+	return true;
+}
+
 MainWindow::MainWindow()
     : m_UI(new Ui::MainWindow)
     , m_ccRoot(nullptr)
@@ -9208,34 +9248,11 @@ void MainWindow::doActionExportPlaneInfo()
 		return;
 	}
 
-	// persistent settings
-	QSettings settings;
-	settings.beginGroup(ccPS::SaveFile());
-	QString currentPath = settings.value(ccPS::CurrentPath(), ccFileUtils::defaultDocPath()).toString();
-
-	QString outputFilename = QFileDialog::getSaveFileName(this,
-	                                                      tr("Select output file"),
-	                                                      currentPath,
-	                                                      "*.csv",
-	                                                      nullptr,
-	                                                      CCFileDialogOptions());
-
-	if (outputFilename.isEmpty())
+	QFile csvFile;
+	if (!AskForOutputCSVFile(this, csvFile))
 	{
-		// process cancelled by the user
 		return;
 	}
-
-	QFile csvFile(outputFilename);
-	if (!csvFile.open(QFile::WriteOnly | QFile::Text))
-	{
-		ccConsole::Error(tr("Failed to open file for writing! (check file permissions)"));
-		return;
-	}
-
-	// save last saving location
-	settings.setValue(ccPS::CurrentPath(), QFileInfo(outputFilename).absolutePath());
-	settings.endGroup();
 
 	// write CSV header
 	QTextStream csvStream(&csvFile);
@@ -9289,7 +9306,7 @@ void MainWindow::doActionExportPlaneInfo()
 		csvStream << Qt::endl;
 	}
 
-	ccConsole::Print(tr("[I/O] File '%1' successfully saved (%2 plane(s))").arg(outputFilename).arg(planes.size()));
+	ccConsole::Print(tr("[I/O] File '%1' successfully saved (%2 plane(s))").arg(csvFile.fileName()).arg(planes.size()));
 	csvFile.close();
 }
 
@@ -9322,33 +9339,11 @@ void MainWindow::doActionExportCloudInfo()
 		return;
 	}
 
-	// persistent settings
-	QSettings settings;
-	settings.beginGroup(ccPS::SaveFile());
-	QString currentPath = settings.value(ccPS::CurrentPath(), ccFileUtils::defaultDocPath()).toString();
-
-	QString outputFilename = QFileDialog::getSaveFileName(this,
-	                                                      tr("Select output file"),
-	                                                      currentPath,
-	                                                      "*.csv",
-	                                                      nullptr,
-	                                                      CCFileDialogOptions());
-	if (outputFilename.isEmpty())
+	QFile csvFile;
+	if (!AskForOutputCSVFile(this, csvFile))
 	{
-		// process cancelled by the user
 		return;
 	}
-
-	QFile csvFile(outputFilename);
-	if (!csvFile.open(QFile::WriteOnly | QFile::Text))
-	{
-		ccConsole::Error(tr("Failed to open file for writing! (check file permissions)"));
-		return;
-	}
-
-	// save last saving location
-	settings.setValue(ccPS::CurrentPath(), QFileInfo(outputFilename).absolutePath());
-	settings.endGroup();
 
 	// determine the maximum number of SFs
 	unsigned maxSFCount = 0;
@@ -9435,7 +9430,7 @@ void MainWindow::doActionExportCloudInfo()
 		}
 	}
 
-	ccConsole::Print(tr("[I/O] File '%1' successfully saved (%2 cloud(s))").arg(outputFilename).arg(clouds.size()));
+	ccConsole::Print(tr("[I/O] File '%1' successfully saved (%2 cloud(s))").arg(csvFile.fileName()).arg(clouds.size()));
 	csvFile.close();
 }
 

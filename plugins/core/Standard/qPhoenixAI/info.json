@@ -1,0 +1,7 @@
+{
+  "type": "Standard",
+  "name": "Phoenix AI",
+  "description": "Preview natural-language 3D processing plans through a local Phoenix service. No data is changed without explicit approval.",
+  "authors": [{ "name": "Badreddine1982" }],
+  "maintainers": [{ "name": "Badreddine1982" }]
+}

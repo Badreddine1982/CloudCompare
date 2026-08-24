@@ -7282,7 +7282,7 @@ void MainWindow::deactivateTranslateRotateMode(bool state)
 			}
 			catch (const std::bad_alloc&)
 			{
-				// not enough memory (nothing to do)
+				ccLog::Warning(tr("Not enough memory to restore the previous selection"));
 			}
 		}
 		// m_transTool->close();

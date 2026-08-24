@@ -1185,18 +1185,17 @@ size_t ccDBRoot::getSelectedEntities(ccHObject::Container& selectedEntities,
 	}
 	catch (const std::bad_alloc&)
 	{
-		// not enough memory!
+		ccLog::Error("Not enough memory to list the selected entities");
+		selectedEntities.clear();
 	}
 
 	if (info)
 	{
 		*info          = {};
-		info->selCount = selectedIndexes.size();
+		info->selCount = selectedEntities.size();
 
-		for (size_t i = 0; i < info->selCount; ++i)
+		for (ccHObject* obj : selectedEntities)
 		{
-			ccHObject* obj = selectedEntities[i];
-
 			info->sfCount += obj->hasScalarFields() ? 1 : 0;
 			info->colorCount += obj->hasColors() ? 1 : 0;
 			info->normalsCount += obj->hasNormals() ? 1 : 0;
@@ -1551,7 +1550,7 @@ void ccDBRoot::expandOrCollapseHoveredBranch(bool expand)
 	}
 	catch (const std::bad_alloc&)
 	{
-		// not enough memory!
+		ccLog::Warning("Not enough memory to expand/collapse the whole branch");
 	}
 }
 

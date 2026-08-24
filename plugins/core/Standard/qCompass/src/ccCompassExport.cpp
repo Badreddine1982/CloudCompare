@@ -787,8 +787,11 @@ void ccCompassExport::SaveSVG(ccMainAppInterface *app, const QString &filename, 
 	//convert image to base64 (png format) to write in svg file
 	QByteArray ba;
 	QBuffer bu(&ba);
-	bu.open(QIODevice::WriteOnly);
-	img.save(&bu, "PNG");
+	if (!bu.open(QIODevice::WriteOnly) || !img.save(&bu, "PNG"))
+	{
+		app->dispToConsole("[ccCompass] Failed to encode the rendered scene as PNG (the SVG file won't contain any image)", ccMainAppInterface::WRN_CONSOLE_MESSAGE);
+		ba.clear();
+	}
 	bu.close();
 
 	//create .svg file

@@ -2,6 +2,7 @@
 
 //qCC_db
 #include <ccGenericGLDisplay.h>
+#include <ccLog.h>
 
 //QT
 #include <QFontMetrics>
@@ -60,8 +61,7 @@ void ccSymbolCloud::addLabel(QString label)
 	}
 	catch (const std::bad_alloc&)
 	{
-		//not enough memory
-		//TODO?
+		ccLog::Warning("[ccSymbolCloud] Not enough memory to add a new label");
 	}
 }
 

@@ -77,7 +77,7 @@ PlyOpenDlg::PlyOpenDlg(QWidget* parent)
 	}
 	catch (const std::bad_alloc&)
 	{
-		// not enough memory?! What can we do...
+		ccLog::Error("[PLY] Not enough memory to initialize the property mapping dialog (some properties won't be accessible)");
 	}
 
 	connect(addSFToolButton, &QAbstractButton::clicked, this, &PlyOpenDlg::addSFComboBox);

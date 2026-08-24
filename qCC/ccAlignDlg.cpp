@@ -463,8 +463,8 @@ void ccAlignDlg::changeSamplingMethod(int index)
 	{
 		// model
 		{
-			if (!modelObject->getOctree())
-				modelObject->computeOctree();
+			if (!modelObject->getOctree() && !modelObject->computeOctree())
+				ccLog::Warning(tr("Failed to compute the octree of the reference cloud"));
 			m_ui->modelSamplingRate->setDecimals(0);
 			m_ui->modelSamplingRate->setMaximum(static_cast<double>(CCCoreLib::DgmOctree::MAX_OCTREE_LEVEL));
 			m_ui->modelSamplingRate->setMinimum(1.);
@@ -472,8 +472,8 @@ void ccAlignDlg::changeSamplingMethod(int index)
 		}
 		// data
 		{
-			if (!dataObject->getOctree())
-				dataObject->computeOctree();
+			if (!dataObject->getOctree() && !dataObject->computeOctree())
+				ccLog::Warning(tr("Failed to compute the octree of the aligned cloud"));
 			m_ui->dataSamplingRate->setDecimals(0);
 			m_ui->dataSamplingRate->setMaximum(static_cast<double>(CCCoreLib::DgmOctree::MAX_OCTREE_LEVEL));
 			m_ui->dataSamplingRate->setMinimum(1.);

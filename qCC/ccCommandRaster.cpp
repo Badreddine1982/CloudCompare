@@ -795,10 +795,16 @@ bool CommandVolume25D::process(ccCommandLineInterface& cmd)
 			txtFilename += QString(".txt");
 
 			QFile txtFile(txtFilename);
-			txtFile.open(QIODevice::WriteOnly | QIODevice::Text);
-			QTextStream txtStream(&txtFile);
-			txtStream << reportInfo.toText() << Qt::endl;
-			txtFile.close();
+			if (txtFile.open(QIODevice::WriteOnly | QIODevice::Text))
+			{
+				QTextStream txtStream(&txtFile);
+				txtStream << reportInfo.toText() << Qt::endl;
+				txtFile.close();
+			}
+			else
+			{
+				return cmd.error(QObject::tr("Failed to save the volume calculation report to '%1' (%2)").arg(txtFilename, txtFile.errorString()));
+			}
 		}
 
 		// generate the result entity (cloud by default)

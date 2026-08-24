@@ -2305,7 +2305,10 @@ bool ccCameraSensor::OrthoRectifyAsImages(std::vector<ccImage*>                 
 		{
 			// export image
 			QString exportFilename = QString("ortho_rectified_%1.png").arg(image->getName());
-			orthoImage.save(outputDir->absoluteFilePath(exportFilename));
+			if (!orthoImage.save(outputDir->absoluteFilePath(exportFilename)))
+			{
+				ccLog::Warning(QString("[ccCameraSensor] Failed to save the ortho-rectified image to '%1'").arg(outputDir->absoluteFilePath(exportFilename)));
+			}
 
 			// export meta-data
 			QFile f(outputDir->absoluteFilePath("ortho_rectification_log.txt"));
@@ -2320,6 +2323,10 @@ bool ccCameraSensor::OrthoRectifyAsImages(std::vector<ccImage*>                 
 				stream << "Local3DBBox" << ' ' << minC[0] << ' ' << minC[1] << ' ' << maxC[0] << ' ' << maxC[1] << ' ';
 				stream << "Local2DBBox" << ' ' << xShiftGlobal << ' ' << yShiftGlobal << ' ' << xShiftGlobal + static_cast<double>(w - 1) << ' ' << yShiftGlobal + static_cast<double>(h - 1) << Qt::endl;
 				f.close();
+			}
+			else
+			{
+				ccLog::Warning(QString("[ccCameraSensor] Failed to open the ortho-rectification log file (%1)").arg(f.errorString()));
 			}
 		}
 

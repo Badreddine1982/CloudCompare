@@ -21,6 +21,9 @@
 #include <QDialog>
 #include <QListWidgetItem>
 
+// qCC_db
+#include <ccLog.h>
+
 ccItemSelectionDlg::ccItemSelectionDlg(bool     multiSelectionEnabled,
                                        QWidget* parent /*=nullptr*/,
                                        QString  itemName /*="entities"*/,
@@ -80,7 +83,8 @@ void ccItemSelectionDlg::getSelectedIndexes(std::vector<int>& indexes) const
 	}
 	catch (const std::bad_alloc&)
 	{
-		// not enough memory?!
+		ccLog::Error("Not enough memory to return the selected items");
+		indexes.clear();
 		return;
 	}
 

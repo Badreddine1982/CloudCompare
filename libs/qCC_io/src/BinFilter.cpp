@@ -1207,15 +1207,29 @@ CC_FILE_ERROR BinFilter::LoadFileV1(QFile& in, ccHObject& container, unsigned nb
 		unsigned fileChunkPos  = 0;
 		unsigned fileChunkSize = std::min(nbOfPoints, CC_MAX_NUMBER_OF_POINTS_PER_CLOUD);
 
-		loadedCloud->reserveThePointsTable(fileChunkSize);
+		if (!loadedCloud->reserveThePointsTable(fileChunkSize))
+		{
+			delete loadedCloud;
+			return CC_FERR_NOT_ENOUGH_MEMORY;
+		}
 		if (header.colors)
 		{
-			loadedCloud->reserveTheRGBTable();
+			if (!loadedCloud->reserveTheRGBTable())
+			{
+				ccLog::Warning(QString("Failed to allocate RGB colors on cloud '%1'").arg(loadedCloud->getName()));
+				delete loadedCloud;
+				return CC_FERR_NOT_ENOUGH_MEMORY;
+			}
 			loadedCloud->showColors(true);
 		}
 		if (header.normals)
 		{
-			loadedCloud->reserveTheNormsTable();
+			if (!loadedCloud->reserveTheNormsTable())
+			{
+				ccLog::Warning(QString("Failed to allocate normals on cloud '%1'").arg(loadedCloud->getName()));
+				delete loadedCloud;
+				return CC_FERR_NOT_ENOUGH_MEMORY;
+			}
 			loadedCloud->showNormals(true);
 		}
 		if (header.scalarField)

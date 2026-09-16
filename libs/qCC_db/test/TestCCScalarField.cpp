@@ -24,6 +24,7 @@
 // system
 #include <cmath>
 #include <limits>
+#include <vector>
 
 //! Grey color scale (black to white), which makes the expected colors easy to predict
 static ccColorScale::Shared CreateGreyScale()

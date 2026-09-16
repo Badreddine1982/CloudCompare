@@ -25,6 +25,12 @@
 #include <cmath>
 #include <vector>
 
+//! Mathematical constant used for the spherical samples.
+//!
+//! Do not use M_PI here: it is a non-standard extension and is not available
+//! with all of the compilers supported by CloudCompare (notably MSVC).
+static constexpr double PI = 3.1415926535897932384626433832795;
+
 //! Maximum angular error (in degrees) introduced by the compression
 static constexpr double MAX_ANGULAR_ERROR_DEG = 0.5;
 
@@ -51,10 +57,10 @@ static std::vector<CCVector3> SampleDirections()
 
 	for (unsigned i = 0; i < SAMPLE_COUNT; ++i)
 	{
-		const double theta = M_PI * (i + 0.5) / SAMPLE_COUNT; // in ]0 ; pi[
+		const double theta = PI * (i + 0.5) / SAMPLE_COUNT; // in ]0 ; pi[
 		for (unsigned j = 0; j < SAMPLE_COUNT; ++j)
 		{
-			const double phi = 2.0 * M_PI * j / SAMPLE_COUNT;
+			const double phi = 2.0 * PI * j / SAMPLE_COUNT;
 			directions.emplace_back(static_cast<PointCoordinateType>(std::sin(theta) * std::cos(phi)),
 			                        static_cast<PointCoordinateType>(std::sin(theta) * std::sin(phi)),
 			                        static_cast<PointCoordinateType>(std::cos(theta)));
@@ -79,7 +85,7 @@ void TestCCNormalCompressor::nullCodeIsDecompressedAsNullVector() const
 
 void TestCCNormalCompressor::compressionRoundTripPreservesDirection() const
 {
-	const double minDotProduct = std::cos(MAX_ANGULAR_ERROR_DEG * M_PI / 180.0);
+	const double minDotProduct = std::cos(MAX_ANGULAR_ERROR_DEG * PI / 180.0);
 
 	for (const CCVector3& N : SampleDirections())
 	{

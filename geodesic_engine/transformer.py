@@ -17,11 +17,11 @@ else:
     from torch import nn
     TorchModule = nn.Module
 
-from geodesic.core.metric import named_p_norm
-from geodesic.distances import pairwise_geodesic_distances
-from geodesic.point_attention import PointAttentionAssistant
-from geodesic.translator import GeodesicTranslator, TranslatorOutput
-from geodesic.translator.g_theta import GThetaController
+from geodesic_engine.core.metric import named_p_norm
+from geodesic_engine.distances import pairwise_geodesic_distances
+from geodesic_engine.attention.point_attention import PointAttentionAssistant
+from geodesic_engine.translator import GeodesicTranslator, TranslatorOutput
+from geodesic_engine.translator.g_theta import GThetaController
 
 
 @dataclass(frozen=True)
